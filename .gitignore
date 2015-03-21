@@ -1,28 +1,33 @@
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# User specific & automatically generated files #
+#################################################
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
+*.vbw
 *.exe
-*.out
-*.app
+*.zip
+*.pch
+*.pdb
+*.exp
+*.idb
+*.dep
+*.obj
+*.ilk
+*.user
+*.scc
+*.tli
+*.sdf
+*.suo
+*.filters
+*.gitnore
+*.log
+
+
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
