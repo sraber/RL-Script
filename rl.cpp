@@ -97,6 +97,7 @@ void CleanUp(){
             break;
          }
       }
+   type = TYPE_EMPTY;
    }
 
 void operator=(const Value& cv){
@@ -210,7 +211,7 @@ public:
       stLeft = 0;
       stRight = 0;
       if( rs.size() ){
-         LeftParse( &stLeft, ls);
+         Parse( &stLeft, ls);
          Parse( &stRight, rs);
          }
       else{
@@ -777,19 +778,24 @@ else if( (it=GlobalContext.Locals.find( *rlv.stringValue ))
    context->Stack.push_front( it->second );
    }
 else if( rlv.type==TYPE_STRING ){
+   context->Stack.pop_front();
+   Value nv;
    if( isnumeric(*rlv.stringValue) ){
-      context->Stack.pop_front();
       strstream ss;
       ss << rlv.stringValue->c_str() << ends;
-      Value nv;
       nv.type=TYPE_NUMBER;
       nv.size=1;
       nv.temp=true;
       nv.numberValue = new float;
       ss >> (*nv.numberValue);
-      context->Stack.push_front( nv );
       }
-   return;
+   else{
+      // nv is initialized to type TYPE_EMPTY, just associate it with the string literal
+      // and leave the literal on the stack.  It's an uninitialized script varialbe at this point.
+      // It should show up on the left side of an equals sign.
+      context->Locals[ *rlv.stringValue ] = nv;
+      }
+   context->Stack.push_front( nv );
    }
 
 }
@@ -949,30 +955,42 @@ lv = context->Stack.front();
 context->Stack.pop_front();
 
 // REVIEW: Left side, as things stand, should always be string.
-if( lv.type!=TYPE_STRING ){    cout << "Wrong type for lvalue." << endl; throw "error"; }
+
+//         Take a little time to figure out how to use Parse for the left side.
+//         If string is already string literal then it has a corresponding Value and that will end up on stack,
+//         but if not yet on string literal list it just shows up as string here.
+//         How do we know the differance between string literal and actual string?
+//         Somehow left hand, new string literal should have an empty Value associate with it.
+
+//if( lv.type!=TYPE_STRING ){    cout << "Wrong type for lvalue." << endl; throw "error"; }
 // Why bother to find it in the globals, just make what we need and put it there.
 
-Value nv;
 switch( rv.type ){
    case ValueType::TYPE_STRING:
       {
-      nv.type = TYPE_STRING;
-      nv.stringValue = new string( *rv.stringValue );
-      context->Locals[ *lv.stringValue ] = nv;
+      // Always shallow copy strings.  This might end up being wrong, but for now shallow copy.
+      lv = rv;
       break;
       }
    case ValueType::TYPE_NUMBER:
       {
-      if( rv.temp ){
-         rv.temp = false;
-         context->Locals[ *lv.stringValue ] = rv;
+      if( lv.type==TYPE_EMPTY && rv.pvr->ref==1 ){
+//REVIEW:  Darn!!!
+//         lv is now local, we think it is associated with a variable, but only it's pointers are.
+//         It's type cannot be changed and associated back to the pointer copies associated to the variable.
+//         Not like this!
+         lv = rv;
          }
       else{
-         nv.type = TYPE_NUMBER;
-         nv.size = rv.size;
-         nv.numberValue = new float[rv.size];
-         for(unsigned long i=0;i<rv.size;i++){ (nv.numberValue)[i] = (rv.numberValue)[i]; }
-         context->Locals[ *lv.stringValue ] = nv;
+         if( lv.type!=TYPE_NUMBER ){    cout << "Wrong type for lvalue." << endl; throw "error"; }
+         if( lv.pvr->ref==1 ){
+            lv = rv;
+            }
+         else{
+            unsigned long n = rv.size;
+            if( lv.size < n ){ n = lv.size; }
+            for(unsigned long i=0;i<n;i++){ (lv.numberValue)[i] = (rv.numberValue)[i]; }
+            }
          }
       break;
       }
