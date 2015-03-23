@@ -15,7 +15,9 @@
 #include <algorithm>
 #include <math.h>
 #include <complex>
+#include <functional>
 #include "Debug.h"
+
 
 using namespace std;
 
@@ -52,13 +54,10 @@ return str;
 
 enum ValueType
 {
-   TYPE_TEMP         = 0x10000000,
    TYPE_EMPTY        = 0,
    TYPE_STRING       = 1,
    TYPE_NUMBER       = 2,
-   TYPE_COMPLEX      = 3,
-   TYPE_ARRAY        = 4,
-   TYPE_COMPLEX_ARRAY= 5
+   TYPE_COMPLEX      = 3
 };
 
 struct Value
@@ -73,14 +72,11 @@ struct Value
    ValueRef* pvr;
    ValueType type;
    unsigned long size;
+   bool temp;
    union{
       string* stringValue;
       float* numberValue;
-      complex<float>* complexValue;
-      float* numberArray;
-   // This is a union, can't have the real side and imaginary side in the union
-      float* complexArrayReal;
-      //float* complexArrayImag;
+      float** complexValue;
       };
 
 void CleanUp(){
@@ -95,14 +91,9 @@ void CleanUp(){
             delete numberValue;
             break;
          case ValueType::TYPE_COMPLEX:
+            delete complexValue[0];
+            delete complexValue[1];
             delete complexValue;
-            break;
-         case ValueType::TYPE_ARRAY:
-            delete[] numberArray;
-            break;
-         case ValueType::TYPE_COMPLEX_ARRAY:
-            delete[] complexArrayReal;
-            //delete[] complexArrayImag;
             break;
          }
       }
@@ -116,29 +107,25 @@ void operator=(const Value& cv){
    type = cv.type;
    pvr = cv.pvr;
    size = cv.size;
+   temp = cv.temp;
    pvr->Increment();
    stringValue   = cv.stringValue;
    numberValue   = cv.numberValue;
    complexValue  = cv.complexValue;
-   numberArray   = cv.numberArray;
-   complexArrayReal  = cv.complexArrayReal;
-   //complexArrayImag  = cv.complexArrayImag;
    }
 
 Value(const Value& cv){
    type = cv.type;
    pvr = cv.pvr;
    size = cv.size;
+   temp = cv.temp;
    pvr->Increment();
    stringValue   = cv.stringValue;
    numberValue   = cv.numberValue;
    complexValue  = cv.complexValue;
-   numberArray   = cv.numberArray;
-   complexArrayReal  = cv.complexArrayReal;
-   //complexArrayImag  = cv.complexArrayImag;
    }
 
-Value() : type(TYPE_EMPTY), size(0){
+Value() : type(TYPE_EMPTY), size(0), temp(false){
    DebugOut << "Value(" << (long)this << ")" << endl;
    pvr = new ValueRef();
    }
@@ -573,15 +560,15 @@ for(int n=1; n<=s.size(); n++ ){
       return;
       }
    else if( s[n-1]=='-' ){
-      *ppST = new stTwoParam<0x12>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+      *ppST = new stTwoParam<0x12>(s.substr(0,n-1), s.substr(n,string::npos) );
       return;
       }
    else if( s[n-1]=='*' ){
-      *ppST = new stTwoParam<0x13>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+      *ppST = new stTwoParam<0x13>(s.substr(0,n-1), s.substr(n,string::npos) );
       return;
       }
    else if( s[n-1]=='/' ){
-      *ppST = new stTwoParam<0x14>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+      *ppST = new stTwoParam<0x14>(s.substr(0,n-1), s.substr(n,string::npos) );
       return;
       }
    }
@@ -726,16 +713,12 @@ switch( rlv.type ){
       cout << *rlv.stringValue << endl;
       break;
    case ValueType::TYPE_NUMBER:
-      cout << *rlv.numberValue << endl;
+      for( unsigned long i=0;i<rlv.size;i++){ cout << (rlv.numberValue)[i] << endl; } 
       break;
    case ValueType::TYPE_COMPLEX:
-      cout << *rlv.complexValue << endl;
-      break;
-   case ValueType::TYPE_ARRAY:
-      cout << *rlv.numberArray << endl;
-      break;
-   case ValueType::TYPE_COMPLEX_ARRAY:
-      //cout << *rlv.complexArray << endl;
+      for( unsigned long i=0;i<rlv.size;i++){ 
+         cout << (rlv.complexValue)[0][i] << " , " << (rlv.complexValue)[1][i] << endl; 
+         } 
       break;
    };
 
@@ -801,6 +784,7 @@ else if( rlv.type==TYPE_STRING ){
       Value nv;
       nv.type=TYPE_NUMBER;
       nv.size=1;
+      nv.temp=true;
       nv.numberValue = new float;
       ss >> (*nv.numberValue);
       context->Stack.push_front( nv );
@@ -979,36 +963,24 @@ switch( rv.type ){
       }
    case ValueType::TYPE_NUMBER:
       {
-      nv.type = TYPE_NUMBER;
-      nv.numberValue = new float(*rv.numberValue);
-      context->Locals[ *lv.stringValue ] = nv;
+      if( rv.temp ){
+         rv.temp = false;
+         context->Locals[ *lv.stringValue ] = rv;
+         }
+      else{
+         nv.type = TYPE_NUMBER;
+         nv.size = rv.size;
+         nv.numberValue = new float[rv.size];
+         for(unsigned long i=0;i<rv.size;i++){ (nv.numberValue)[i] = (rv.numberValue)[i]; }
+         context->Locals[ *lv.stringValue ] = nv;
+         }
       break;
       }
    case ValueType::TYPE_COMPLEX:
       {
+/*
       nv.type = TYPE_COMPLEX;
       nv.complexValue = new complex<float>(*rv.complexValue);
-      context->Locals[ *lv.stringValue ] = nv;
-      break;
-      }
-   case ValueType::TYPE_ARRAY:
-      {
-      int n = rv.size;
-      nv.type = TYPE_ARRAY;
-      (nv.numberArray) = new float[n];
-      float* it = nv.numberArray;
-      float* is = rv.numberArray;
-      float* iend = is + n;
-      for( ;is<iend;is++,it++ ){ *it = *is; }
-      context->Locals[ *lv.stringValue ] = nv;
-      break;
-      }
-   case ValueType::TYPE_COMPLEX_ARRAY:
-      {
-/*
-      int n = rv.complexArray->size();
-      nv.type = TYPE_COMPLEX_ARRAY;
-      nv.complexArray = new VectorXcf(*rv.complexArray);
       context->Locals[ *lv.stringValue ] = nv;
       break;
 */
@@ -1442,16 +1414,17 @@ context->Stack.pop_front();
 Value nv;
 
 int n = *lv.numberValue;
-nv.type = TYPE_ARRAY;
-nv.numberArray = new float[n];
+nv.type = TYPE_NUMBER;
+nv.numberValue = new float[n];
 nv.size = n;
+nv.temp = true;
 float f = 2.0f * R_PI * *fv.numberValue;
 float p = *ov.numberValue;
 
 switch(p1){
-   case 2: for( int i=0;i<n;i++){ (nv.numberArray)[i] = tan((f*(float)i/(float)(n-1))+p); } break;
-   case 1: for( int i=0;i<n;i++){ (nv.numberArray)[i] = sin((f*(float)i/(float)(n-1))+p); } break;
-   case 0: for( int i=0;i<n;i++){ (nv.numberArray)[i] = cos((f*(float)i/(float)(n-1))+p); } break;
+   case 2: for( int i=0;i<n;i++){ (nv.numberValue)[i] = tan((f*(float)i/(float)(n-1))+p); } break;
+   case 1: for( int i=0;i<n;i++){ (nv.numberValue)[i] = sin((f*(float)i/(float)(n-1))+p); } break;
+   case 0: for( int i=0;i<n;i++){ (nv.numberValue)[i] = cos((f*(float)i/(float)(n-1))+p); } break;
    default: cout << "byte code invalid, p1 not in valid range." << endl; throw "error";
    }
 context->Stack.push_front( nv );
@@ -1472,11 +1445,13 @@ context->Stack.pop_front();
 
 // Pull value 2 off of stack.
 // Pull value 1 off of stack.
-void rlplus(rlContext* context, RLBYTES::iterator& iter)
+template< class T >
+void mathop(rlContext* context, RLBYTES::iterator& iter)
 {
 long p1 = iter->p1;
 Value s1;
 Value s2;
+T op;
 
 if( context->Stack.size()<2 ){ cout << "Run time error. Not enough parameters on the stack for rlplus command." << endl; throw "error"; }
 
@@ -1492,19 +1467,20 @@ if( s1.type!=s2.type ){
    }
 
 Value rslt;
-if( s1.type==TYPE_ARRAY ){
-   rslt.type = TYPE_ARRAY;
+rslt.temp = true;
+if( s1.type==TYPE_NUMBER ){
+   rslt.type = TYPE_NUMBER;
    unsigned long n = s1.size;
    if( s2.size < n ){ n = s2.size; }
-   (rslt.numberArray) = new float[n]; 
+   (rslt.numberValue) = new float[n]; 
    rslt.size = n;
-   float* is1 = s1.numberArray;
-   float* is2 = s2.numberArray;
-   float* it = rslt.numberArray;
+   float* is1 = s1.numberValue;
+   float* is2 = s2.numberValue;
+   float* it = rslt.numberValue;
    float* iend = is1 + n;
-   for( ;is1<iend;is1++,is2++,it++ ){ *it = *is1 + *is2; }
+   for( ;is1<iend;is1++,is2++,it++ ){ *it = op(*is1, *is2); }
    }
-else if( s1.type==TYPE_COMPLEX_ARRAY ){
+else if( s1.type==TYPE_COMPLEX ){
 /*
    rslt.type = TYPE_COMPLEX_ARRAY;
    if(s1.complexArray->size()!=s2.complexArray->size()){ cout << "Arrays are different lengths. They must be the same.  Try using  crop." << endl;  throw "error"; }
@@ -1512,191 +1488,8 @@ else if( s1.type==TYPE_COMPLEX_ARRAY ){
    *rslt.complexArray = *s1.complexArray + *s2.complexArray;
 */
    }
-else if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_NUMBER;
-   rslt.size = 1;
-   rslt.numberValue = new float; 
-   *rslt.numberValue = *s1.numberValue + *s2.numberValue;
-   }
 else{
-   cout << "Yur asking me to add things that can't be added!" << endl;
-   return;
-   }
-
-context->Stack.push_front( rslt );
-}
-
-// Pull value 2 off of stack.
-// Pull value 1 off of stack.
-void subtract(rlContext* context, RLBYTES::iterator& iter)
-{
-long p1 = iter->p1;
-Value s1;
-Value s2;
-if( context->Stack.size()<2 ){ cout << "Run time error. Not enough parameters on the stack for subtract command." << endl; throw "error"; }
-
-s2 = context->Stack.front();
-context->Stack.pop_front();
-
-s1 = context->Stack.front();
-context->Stack.pop_front();
-
-if( s1.type!=s2.type ){
-   cout << "Different types passed to binary math operator.  No can do!" << endl;
-   return;
-   }
-
-Value rslt;
-if( s1.type==TYPE_ARRAY ){
-   rslt.type = TYPE_ARRAY;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   (rslt.numberArray) = new float[n]; 
-   rslt.size = n;
-   float* is1 = s1.numberArray;
-   float* is2 = s2.numberArray;
-   float* it = rslt.numberArray;
-   float* iend = is1 + n;
-   for( ;is1<iend;is1++,is2++,it++ ){ *it = *is1 - *is2; }
-   }
-else if( s1.type==TYPE_COMPLEX_ARRAY ){
-/*
-   rslt.type = TYPE_COMPLEX_ARRAY;
-   if(s1.complexArray->size()!=s2.complexArray->size()){ cout << "Arrays are different lengths. They must be the same.  Try using  crop." << endl;  throw "error"; }
-   rslt.complexArray = new VectorXcf(); 
-   *rslt.complexArray = *s1.complexArray - *s2.complexArray;
-*/
-   }
-else if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_NUMBER;
-   rslt.size = 1;
-   rslt.numberValue = new float; 
-   *rslt.numberValue = *s1.numberValue - *s2.numberValue;
-   }
-else{
-   cout << "Yur asking me to subtract things that can't be added!" << endl;
-   return;
-   }
-
-context->Stack.push_front( rslt );
-}
-
-// Pull value 2 off of stack.
-// Pull value 1 off of stack.
-void mult(rlContext* context, RLBYTES::iterator& iter)
-{
-long p1 = iter->p1;
-Value s1;
-Value s2;
-if( context->Stack.size()<2 ){ cout << "Run time error. Not enough parameters on the stack for mult command." << endl; throw "error"; }
-
-s2 = context->Stack.front();
-context->Stack.pop_front();
-
-s1 = context->Stack.front();
-context->Stack.pop_front();
-
-if( s1.type!=s2.type ){
-   cout << "Different types passed to binary math operator.  No can do!" << endl;
-   return;
-   }
-
-Value rslt;
-if( s1.type==TYPE_ARRAY ){
-   rslt.type = TYPE_ARRAY;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   (rslt.numberArray) = new float[n]; 
-   rslt.size = n;
-   float* is1 = s1.numberArray;
-   float* is2 = s2.numberArray;
-   float* it = rslt.numberArray;
-   float* iend = is1 + n;
-   for( ;is1<iend;is1++,is2++,it++ ){ *it = *is1 * *is2; }
-   }
-else if( s1.type==TYPE_COMPLEX_ARRAY ){
-/*
-   int n = s1.complexArray->size() < s2.complexArray->size() ? s1.complexArray->size() : s2.complexArray->size();
-   rslt.type = TYPE_COMPLEX_ARRAY;
-   rslt.complexArray = new VectorXcf(n); 
-   for( int i=0; i < n; i++ ){
-      (*rslt.complexArray)(i) = (*s1.complexArray)(i) * (*s2.complexArray)(i);
-      }
-*/
-   }
-else if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_NUMBER;
-   rslt.numberValue = new float; 
-   rslt.size = 1;
-   *rslt.numberValue = *s1.numberValue * *s2.numberValue;
-   }
-else if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_COMPLEX;
-   rslt.complexValue = new complex<float>();
-   rslt.size = 1;
-   *rslt.complexValue = *s1.complexValue * *s2.complexValue;
-   }
-else{
-   cout << "Yur asking me to multiply things that can't be multiplied!" << endl;
-   return;
-   }
-
-context->Stack.push_front( rslt );
-}
-
-void div(rlContext* context, RLBYTES::iterator& iter)
-{
-long p1 = iter->p1;
-Value s1;
-Value s2;
-if( context->Stack.size()<2 ){ cout << "Run time error. Not enough parameters on the stack for sub command." << endl; throw "error"; }
-
-s2 = context->Stack.front();
-context->Stack.pop_front();
-
-s1 = context->Stack.front();
-context->Stack.pop_front();
-
-if( s1.type!=s2.type ){
-   cout << "Different types passed to binary math operator.  No can do!" << endl;
-   return;
-   }
-
-Value rslt;
-if( s1.type==TYPE_ARRAY ){
-   rslt.type = TYPE_ARRAY;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   (rslt.numberArray) = new float[n]; 
-   rslt.size = n;
-   float* is1 = s1.numberArray;
-   float* is2 = s2.numberArray;
-   float* it = rslt.numberArray;
-   float* iend = is1 + n;
-   for( ;is1<iend;is1++,is2++,it++ ){ *it = *is1 / *is2; }
-   }
-else if( s1.type==TYPE_COMPLEX_ARRAY ){
-/*
-   int n = s1.complexArray->size() < s2.complexArray->size() ? s1.complexArray->size() : s2.complexArray->size();
-   rslt.type = TYPE_COMPLEX_ARRAY;
-   rslt.complexArray = new VectorXcf(n); 
-   for( int i=0; i < n; i++ ){
-      (*rslt.complexArray)(i) = (*s1.complexArray)(i) / (*s2.complexArray)(i);
-      }
-*/
-   }
-else if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_NUMBER;
-   rslt.numberValue = new float; 
-   *rslt.numberValue = *s1.numberValue / *s2.numberValue;
-   }
-else if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_COMPLEX;
-   rslt.complexValue = new complex<float>();
-   *rslt.complexValue = *s1.complexValue / *s2.complexValue;
-   }
-else{
-   cout << "Yur asking me to multiply things that can't be multiplied!" << endl;
+   cout << "Yur asking me to " << typeid(T).name() << " things that can't be added!" << endl;
    return;
    }
 
@@ -1717,6 +1510,8 @@ context->Stack.pop_front();
 
 s1 = context->Stack.front();
 context->Stack.pop_front();
+
+if( s1.type!=TYPE_NUMBER && s2.type!=TYPE_NUMBER ){  cout << "Run time error. Parameters incorrect for ilt command." << endl; throw "error"; }
 
 if( !(*s1.numberValue < *s2.numberValue) ){
    iter += p1;
@@ -1786,10 +1581,10 @@ for( iter=context->ByteCode.begin();
 //      case 0x0E: dir(context,iter->p1,iter->p2); break;
 //      case 0x0F: crop(context,iter->p1,iter->p2); break;
 
-      case 0x11: rlplus(context,iter); break;
-      case 0x12: subtract(context,iter); break;
-      case 0x13: mult(context,iter); break;
-      case 0x14: div(context,iter); break;
+      case 0x11: mathop<plus<float>>(context,iter); break;
+      case 0x12: mathop<minus<float>>(context,iter); break;
+      case 0x13: mathop<multiplies<float>>(context,iter); break;
+      case 0x14: mathop<divides<float>>(context,iter); break;
 /*
       case 0x15: inc(context,iter); break;
 
