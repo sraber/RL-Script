@@ -19,7 +19,12 @@
 *.filters
 *.gitnore
 *.log
-
+*.tlog
+*.manifest
+*.res
+*.rc
+*.ipch
+*.lastbuildstate
 
 
 # OS generated files #

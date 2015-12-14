@@ -1,7 +1,6 @@
 // rl.cpp : Defines the entry point for the console application.
 //
 
-#include "stdafx.h"
 #include <windows.h>
 #include <iostream>
 #include <direct.h>
@@ -19,11 +18,33 @@
 #include <functional>
 #include "Debug.h"
 #include "SysError.h"
-#include "dsp.h"
+
+#include "ml.h"
 
 using namespace std;
 
 #define R_PI 3.14159265f
+
+//----------------------------------------
+// Users of the MyLanguage library must implement this function,
+// even if it is empty.
+bool ml_parse(SyntaxTree**ppST,string s);
+//Example:
+//bool ml_parse(SyntaxTree**ppST,string s){ return false; }
+
+void ml_evaulate( rlContext* context, rlTupple& rlt );
+
+// Users of the MyLanguage library must also implement this function.
+// It may be empty.
+//Example:
+//void ml_evaulate( rlContext* context, rlTupple& rlt )
+//{
+//switch(rlt.cmd){
+//   case 0x0100: your_function1(context,rlt.p1,rlt.p2); break;
+//   case 0x0200: another_function(context,rlt); break;
+//   }
+//}
+//--------------------------------------------
 
 //--------------------------------------------
 // Some string manipulation code
@@ -80,138 +101,6 @@ return 0; // will never hit this line.
 }
 //--------------------------------------------
 
-//--------------------------------------------
-//    Value representation
-//
-// Each value of the script language is represented by 
-// a union of pointers.  The types of values represented are
-// String, floating point, and complex floating point (which is pairs of floating point numbers).
-// The enumeration below is used to indicate type in the Value structure.
-enum ValueType
-{
-   TYPE_EMPTY        = 0,
-   TYPE_STRING       = 1,
-   TYPE_NUMBER       = 2,
-   TYPE_COMPLEX      = 3
-};
-
-// Each program variable is stored as a Value structure.
-// The Value structure is made up of pointers to the underlaying types.
-// This was done so that when copying a structure a shallow copy is all that is needed.
-// This makes pushing an instance of a Value structure onto lists and maps easier.
-// The Value structure has a nested referance structure and this is used to control the
-// lifetime of the dynamically allocated memory of the Value structure.
-// To explain this consider the following example:
-// Value v1;
-// .. allocate a new floating point array and assign it to numberValue pointer.
-// Value v2;  <- this might be an instance of value in a list
-// v2 = v1;   <- v2 gets assigned v1
-// .. the value copyconstructor copies ValueRef from v1 to v2 and increments the count.  The Ref count is now 2
-// .. and the ValueRef is shared by v1 and v2.
-// .. Now lets say v1 goes out of scope.
-// .. v1 destructor is called and ValueRef is decremented.  The ref count goes to 1 (not zero) so
-// .. the ValueRef is not deleted and the data array is not deleted.  Just the v1 structure goes away.
-// .. This is correct because v2 is still using the ValueRef and the data array.
-// .. If nothing else happens, when v2 goes out of scope and is destroyed, the ValueRef and the data array
-// .. will be cleaned up (deleted).
-struct Value
-{
-   struct ValueRef{
-      int ref;
-      ValueRef() : ref(1){ DebugLevel1( "ValueRef(" << (long)this << ")" << endl ) }
-      ~ValueRef(){ DebugLevel1( "~ValueRef(" << (long)this << ")" << endl ) }
-      int Decrement(){ ref--; DebugLevel1( "--ValueRef(" << (long)this << ") " << ref << endl; return ref ) }
-      int Increment(){ ref++; DebugLevel1( "++ValueRef(" << (long)this << ") " << ref << endl; return ref ) }
-      };
-   ValueRef* pvr;
-   ValueType type;
-   unsigned long size;
-   unsigned long id;
-   union{
-      string* stringValue;
-      float* numberValue;
-      float** complexValue;
-      };
-
-void CleanUp(){
-   if( !pvr->Decrement()  ){
-      DebugLevel1( "Value(" << (long)this << ")::CleanUp - type=" << type << endl )
-      delete pvr;
-      switch( type ){
-         case ValueType::TYPE_STRING:
-            delete stringValue;
-            break;
-         case ValueType::TYPE_NUMBER:
-            delete numberValue;
-            break;
-         case ValueType::TYPE_COMPLEX:
-            delete complexValue[0];
-            delete complexValue[1];
-            delete complexValue;
-            break;
-         }
-      }
-   type = TYPE_EMPTY;
-   id = -1;
-   }
-
-void operator=(const Value& cv){
-   // This must be called first.  Clean up of the existing data
-   // must be done before reassigning things.
-   CleanUp();
-
-   type = cv.type;
-   pvr = cv.pvr;
-   size = cv.size;
-   id = cv.id;
-   pvr->Increment();
-   stringValue   = cv.stringValue;
-   numberValue   = cv.numberValue;
-   complexValue  = cv.complexValue;
-   }
-
-Value(const Value& cv){
-   type = cv.type;
-   pvr = cv.pvr;
-   size = cv.size;
-   id = cv.id;
-   pvr->Increment();
-   stringValue   = cv.stringValue;
-   numberValue   = cv.numberValue;
-   complexValue  = cv.complexValue;
-   }
-
-Value() : type(TYPE_EMPTY), size(0), id(-1){
-   DebugLevel1( "Value(" << (long)this << ")" << endl )
-   pvr = new ValueRef();
-   }
-
-~Value(){
-   DebugLevel1( "~Value(" << (long)this << ")" << endl )
-   CleanUp();
-   }
-};
-
-// rlTupple represents a byte code in this scripting language.
-// cmd - the numeric value of the instruction
-// p1  - auxilary parameter used by some commands
-// p2  - auxilary parameter used by some commands
-struct rlTupple
-{
-long cmd;
-long p1;
-long p2;
-rlTupple() : cmd(0), p1(0), p2(0){}
-};
-
-// A vector to hold "the program", a series of byte codes.
-typedef std::vector<rlTupple> RLBYTES;
-// A vector that holds program string literals.  The index of the string in the vector
-// is used by some commands to allow the command to reterive the actual string value
-// from the vector.  A string literal appearing multiple time in a program will exist only once
-// in the list.
-typedef std::vector<string> RLLITERALS;
-
 // This structutre is used to support functions.  The byte code of a function
 // block is held seperatly and is accessed by associating this structure with a function name.
 // The string literals are literals at the function level.  They are local variables.
@@ -222,33 +111,11 @@ RLBYTES ByteCode;
 RLLITERALS Literals;
 };
 
-// Consider this simple program for explinations below:
-// a=1
-// b=2
-// c=a + b
-//
-typedef std::list<Value> RLVALUELIST;        // Supports a list of Value structures.  This will be used as a program stack.
-typedef std::map<string,Value> RLVALUEMAP;   // Maps a string to a Value.  This is how a program variable, such as a, b, and c above are associated with a Value struct.
 typedef std::map<string,long> RLFUNCTIONMAP; // Maps a function name to an index.
 typedef std::vector<rlFunction> RLFUNCTIONS; // A vector to hold Function structures.
 
 RLFUNCTIONMAP FunctionMap;
 RLFUNCTIONS Functions;
-
-// a rlContext contains every thing that is needed for the script virtual machine.
-// The program (the vector of byte codes).
-// The list of strings that represent variables (program literals)
-// The program stack.  This is how the whole thing works, values are pushed on to the stack by some commands and pulled of and replaced by other commands.
-// The program commands act on the Stack.
-//  Locals are the instances of Value associated with each program variable.
-struct rlContext
-{
-RLBYTES& ByteCode;
-RLLITERALS& Literals;
-RLVALUELIST& Stack;
-RLVALUEMAP& Locals;
-rlContext(RLBYTES& _val_bytes, RLLITERALS& _literals, RLVALUEMAP& _val_map, RLVALUELIST& _stack) : ByteCode(_val_bytes), Literals(_literals), Locals(_val_map), Stack(_stack){}
-};
 
 RLBYTES  MainBytes;
 RLLITERALS MainLiterals;
@@ -298,12 +165,6 @@ return nv;
 
 //---------------------------------------------------
 //    Abstract Syntax tree structures
-
-class SyntaxTree
-{
-public:
-   virtual void Produce(rlContext* context) = 0;
-};
 
 // Function prototype of the recursive decent parser.  This is where most of the work gets done.
 void Parse(SyntaxTree**ppST,string s);
@@ -446,7 +307,7 @@ public:
          fun.ParamList.push_back( trim( s.substr(pos1,string::npos) ) );
          }
 
-      st_block = new stBlock(pis,"RL:Function:>>","end"); // Doesn't exit until user enters "next"
+      st_block = new stBlock(pis,"Function:>>","end"); // Doesn't exit until user enters "end"
 
       fid = id - 1;
       FunctionMap[name + " "]=fid;
@@ -469,7 +330,7 @@ public:
 
    stIf(std::istream* pis, string s){
       Parse( &st_conditional, s);
-      st_block = new stBlock(pis,"RL:if>>","eif"); // Doesn't exit until user enters "eif"
+      st_block = new stBlock(pis,"if>>","eif"); // Doesn't exit until user enters "eif"
       }
    void Produce(rlContext* context){
       //ex: if i<10
@@ -479,13 +340,13 @@ public:
       tup.p1=0; 
       tup.p2=0;
 
-      tup.cmd = 0xF9; // ! - flip the result of the conditional above.
+      tup.cmd = 0x39; // ! - flip the result of the conditional above.
       context->ByteCode.push_back(tup); 
 
       // We flip the sign of the conditional because we only have itj (if true jump),
       // in this case we want to jump if flase and execute the block if true.
       // We could add an ifj (if false jump byte code) but why not try to make due for now.
-      tup.cmd = 0xF2;      // itj - If true jump
+      tup.cmd = 0x32;      // itj - If true jump
       //tup.p1 = 0;        // We'll figure out the jump later
       context->ByteCode.push_back( tup );
 
@@ -524,7 +385,7 @@ public:
       else{
          Parse( &st_Step, "1");
          }
-      st_block = new stBlock(pis,"RL:Loop>>","next"); // Doesn't exit until user enters "next"
+      st_block = new stBlock(pis,"Loop>>","next"); // Doesn't exit until user enters "next"
       }
    void Produce(rlContext* context){
       long top;
@@ -552,10 +413,10 @@ public:
       stLeft->Produce(context);     // write counter inequality.
 
      
-      tup.cmd = 0xF5; // >=
+      tup.cmd = 0x35; // >=
       context->ByteCode.push_back(tup); 
 
-      tup.cmd = 0xF2;               // itf - If true jump
+      tup.cmd = 0x32;               // itf - If true jump
       tup.p1 = top - context->ByteCode.size() - 1;
       context->ByteCode.push_back(tup); 
      }
@@ -606,44 +467,6 @@ else{
 
 //----------------------
 
-// Use this template for unary operators
-template< const long cmd, const long p1=0, const long p2=0 > 
-class stUnaryOperator : public SyntaxTree
-{
-public:
-   SyntaxTree* st1;
-   stUnaryOperator(string rs){
-      Parse( &st1, rs );
-      }
-   void Produce(rlContext* context){
-      st1->Produce(context);
-      rlTupple tup;
-      tup.cmd = cmd;
-      tup.p1 = p1;
-      tup.p2 = p2;
-      context->ByteCode.push_back(tup);
-      }
-};
-
-// Use this template for binary operators
-template< const long cmd > 
-class stBinaryOperator : public SyntaxTree
-{
-public:
-   SyntaxTree* stLeft;
-   SyntaxTree* stRight;
-   stBinaryOperator(string ls, string rs){
-      Parse( &stLeft, ls);
-      Parse( &stRight, rs);
-      }
-   void Produce(rlContext* context){
-      stLeft->Produce(context);
-      stRight->Produce(context);
-      rlTupple tup;
-      tup.cmd = cmd;
-      context->ByteCode.push_back(tup);
-      }
-};
 
 template< const long cmd, const long p1=0, const long p2=0 > 
 class stThreeParmWithOptions : public SyntaxTree
@@ -673,29 +496,6 @@ public:
       }
    void Produce(rlContext* context){
       st3->Produce(context);
-      st2->Produce(context);
-      st1->Produce(context);
-      rlTupple tup;
-      tup.cmd = cmd;
-      tup.p1 = p1;
-      tup.p2 = p2;
-      context->ByteCode.push_back(tup);
-      }
-};
-
-template< const long cmd, const long p1=0, const long p2=0 > 
-class stTwoParm : public SyntaxTree
-{
-public:
-   SyntaxTree* st1;
-   SyntaxTree* st2;
-   stTwoParm(string rs){
-      size_t pos = rs.find_first_of(",");
-      SyntaxAssert( pos!=string::npos, "Call to write missing parameters.  Syntax: write [value], [path and file name] " )
-      Parse( &st1, rs.substr(0,pos));
-      Parse( &st2, rs.substr(pos+1));
-      }
-   void Produce(rlContext* context){
       st2->Produce(context);
       st1->Produce(context);
       rlTupple tup;
@@ -814,7 +614,7 @@ public:
          (*ist)->Produce(context);
          }
       rlTupple tup;
-      tup.cmd = 0xF0;
+      tup.cmd = 0x30;
       tup.p1 = fid;
       context->ByteCode.push_back(tup);
       }
@@ -834,8 +634,6 @@ for(int n=1; n<=s.size(); n++ ){
    size_t pos;
    string s1 = s.substr(0,n);
 
-// Order the statements by number of characters, small to large.
-
    pos=s1.find("cd ");
    if( pos==0 ){
       *ppST = new stUnaryOperator<0x0D>(s.substr(pos+3));
@@ -846,37 +644,9 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stUnaryOperator<0x0E>(s.substr(pos+2));
       return;
       }
-/*
-   pos=s1.find("lp ");
-   if( pos==0 ){
-      // check that string is bound properly.  Like first line, then space after.
-      *ppST = new stLP(s.substr(pos+3));
-      return;
-      }
-   pos=s1.find("hp ");
-   if( pos==0 ){
-      *ppST = new stHP(s.substr(pos+3));
-      return;
-      }
-*/
-   pos=s1.find("ft ");
-   if( pos==0 ){
-      *ppST = new stUnaryOperator<0x30>(s.substr(pos+3));
-      return;
-      }
    pos=s1.find("sum ");
    if( pos==0 ){
       *ppST = new stUnaryOperator<0x1B>(s.substr(pos+3));
-      return;
-      }
-   pos=s1.find("irft ");
-   if( pos==0 ){
-      *ppST = new stUnaryOperator<0x31,0>(s.substr(pos+4));
-      return;
-      }
-   pos=s1.find("icft ");
-   if( pos==0 ){
-      *ppST = new stUnaryOperator<0x31,1>(s.substr(pos+4));
       return;
       }
    pos=s1.find("sqrt ");
@@ -982,6 +752,16 @@ for(int n=1; n<=s.size(); n++ ){
       return;
       }
 
+   //---------------------------------------------
+   // This is where the parser is specialized for
+   // additional script elements.
+   //
+   if( ml_parse(ppST, s) ){
+      return;
+      }
+   //
+   //---------------------------------------------
+
    RLFUNCTIONMAP::iterator fit;
    if( s1.size()==s.size() ){
       fit = FunctionMap.find( s1 + " " );
@@ -1014,32 +794,32 @@ for(int n=1; n<=s.size(); n++ ){
       }
    else if( s[n-1]=='>' ){
       if( n>1 && s[n]=='=' ){
-         *ppST = new stBinaryOperator<0xF5>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+         *ppST = new stBinaryOperator<0x35>(s.substr(0,n-1), s.substr(n+1,string::npos) );
          }
       else{
-         *ppST = new stBinaryOperator<0xF3>(s.substr(0,n-1), s.substr(n,string::npos) );
+         *ppST = new stBinaryOperator<0x33>(s.substr(0,n-1), s.substr(n,string::npos) );
          }
       return;
       }
    else if( s[n-1]=='<' ){
       if( n>1 && s[n]=='=' ){
-         *ppST = new stBinaryOperator<0xF6>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+         *ppST = new stBinaryOperator<0x36>(s.substr(0,n-1), s.substr(n+1,string::npos) );
          }
       else{
-         *ppST = new stBinaryOperator<0xF4>(s.substr(0,n-1), s.substr(n,string::npos) );
+         *ppST = new stBinaryOperator<0x34>(s.substr(0,n-1), s.substr(n,string::npos) );
          }
       return;
       }
    else if( s[n-1]=='=' && n>1 && s[n]=='=' ){
-      *ppST = new stBinaryOperator<0xF8>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+      *ppST = new stBinaryOperator<0x38>(s.substr(0,n-1), s.substr(n+1,string::npos) );
       return;
       }
    else if( s[n-1]=='!' ){
       if( n>1 && s[n]=='=' ){
-         *ppST = new stBinaryOperator<0xF7>(s.substr(0,n-1), s.substr(n+1,string::npos) );
+         *ppST = new stBinaryOperator<0x37>(s.substr(0,n-1), s.substr(n+1,string::npos) );
          }
       else{
-         *ppST = new stUnaryOperator<0xF9>(s.substr(n,string::npos) );
+         *ppST = new stUnaryOperator<0x39>(s.substr(n,string::npos) );
          }
       return;
       }
@@ -1060,10 +840,14 @@ for(int n=1; n<=s.size(); n++ ){
 *ppST = new stLiteral(s);
 }
 
-int _tmain(int argc, _TCHAR* argv[])
+void ml_start(char* your_language_name, char* your_prompt )
 {
 string cmd;
 
+HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE); 
+if (hStdout != INVALID_HANDLE_VALUE) { SetConsoleTextAttribute(hStdout, FOREGROUND_RED | BACKGROUND_BLUE | FOREGROUND_INTENSITY); }
+cout << "Welcome to " << your_language_name << "." << endl << "A scripting language based on MyLanguage." << endl << endl; 
+if (hStdout != INVALID_HANDLE_VALUE) { SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);}
 cout << "Enter a command" << endl;
 goto START;
 
@@ -1080,11 +864,11 @@ while( cmd!="exit" ){
          while( !f.eof() ){
             f.getline(buf,255);
             string line(buf);
-            //cout << ">> " << line << endl;
             stRoot root(&f, line);
             root.Produce(&GlobalContext);
             Evaulate(&GlobalContext);
             }
+         stBlock::ShowPrompt = true;
          }
       else{
          cout << "Well... I couldn't find that file.  Are you in the correct directory?" << endl;
@@ -1134,11 +918,9 @@ while( cmd!="exit" ){
       GlobalContext.ByteCode.clear();
       }
    START:
-   cout << "R>>";
+   cout << your_prompt;
    getline(cin,cmd);
    }
-
-	return 0;
 }
 
 /////////////////////////////////////////////////////////////
@@ -1730,107 +1512,6 @@ if( av.type==TYPE_COMPLEX ){
 
 }
 
-// Pull value name off of stack.  (It should be an array.)
-void ft(rlContext* context, long p1, long p2)
-{
-Value lv;
-long n;
-RunTimeAssert( context->Stack.size() >= 1, "FT cmd.  Not enough parameters on the stack." )
-lv = context->Stack.front();
-context->Stack.pop_front();
-Value nv;
-
-if( lv.type==TYPE_NUMBER ){
-   n = lv.size;
-   float* pt = new float[n];
-   float* ipt = pt;
-   for(int i=0;i<n;i++,ipt++){ *ipt = lv.numberValue[i]; }
-   rlFFT( pt, n, 1 );
-   n >>= 1;
-   nv.type = TYPE_COMPLEX;
-   nv.size = n;
-   nv.complexValue = new float*[2];
-   nv.complexValue[0] = new float[n];
-   nv.complexValue[1] = new float[n];
-   nv.complexValue[0][0] = *pt;
-   nv.complexValue[1][0] = 0.0f;
-   nv.complexValue[0][n-1] = *(pt+1);
-   nv.complexValue[1][n-1] = 0.0f;
-   ipt = pt + 2;
-   for(int i=1;i<(n-1);i++,ipt+=2){ 
-      nv.complexValue[0][i] = *ipt; 
-      nv.complexValue[1][i] = *(ipt+1); 
-      }
-   delete[] pt;  
-   }
-else if( lv.type==TYPE_COMPLEX ){
-   n = lv.size;
-   float* pt = new float[2*n];
-   float* ipt = pt;
-   for(int i=0;i<n;i++,ipt+=2){ *ipt = lv.complexValue[0][i];  *(ipt+1) = lv.complexValue[1][i]; }
-   cpFFT( pt, 2*n, 1 );
-   nv.type = TYPE_COMPLEX;
-   nv.size = n;
-   nv.complexValue = new float*[2];
-   nv.complexValue[0] = new float[n];
-   nv.complexValue[1] = new float[n];
- 
-   ipt = pt;
-   for(int i=0;i<n;i++,ipt+=2){ 
-      nv.complexValue[0][i] = *ipt;
-      nv.complexValue[1][i] = *(ipt+1);
-      }
-
-   delete[] pt;  
-   }
-else{
-   ThrowRunTimeAssert( "Invalid argument in call to FT." )
-   }
-
-context->Stack.push_front( nv );
-}
-
-// Pull value off of stack.  (It should be an array.)
-void ift(rlContext* context, long p1, long p2)
-{
-Value lv;
-long n;
-RunTimeAssert( context->Stack.size() >= 1 ,"FT cmd.  Not enough parameters on the stack." )
-context->Stack.pop_front();
-Value nv;
-
-RunTimeAssert( lv.type==TYPE_COMPLEX ,"Invalid argument in call to FT. The array must be complex." )
-if( p1 ){
-   n = lv.size;
-   float* pt = new float[2*n];
-   float* ipt = pt;
-   for(int i=0;i<n;i++,ipt+=2){ *ipt = lv.complexValue[0][i];  *(ipt+1) = lv.complexValue[1][i]; }
-   cpFFT( pt, 2*n, -1 );
-   nv.type = TYPE_COMPLEX;
-   nv.size = n;
-   nv.complexValue = new float*[2];
-   nv.complexValue[0] = new float[n];
-   nv.complexValue[1] = new float[n];
-   ipt = pt;
-   for(int i=0;i<n;i++,ipt+=2){ nv.complexValue[0][i] = *ipt;  nv.complexValue[1][i] = *(ipt+1); }
-   delete[] pt;      
-   }
-else{
-   n = lv.size;
-   float* pt = new float[2*n];
-   float* ipt = pt;
-   nv.type = TYPE_NUMBER;
-   nv.numberValue = pt; 
-   nv.size = 2*n;
-   *ipt = lv.complexValue[0][1];  *(ipt+1) = lv.complexValue[0][n-1];
-   ipt+=2;
-   for(int i=2;i<n;i++,ipt+=2){ *ipt = lv.complexValue[0][i];  *(ipt+1) = lv.complexValue[1][i]; }
-   rlFFT( pt, 2*n, -1 );
-   }
-
-context->Stack.push_front( nv );
-}
-
 // Pull value off of stack.  (It should be an array.)
 void size(rlContext* context, long p1, long p2)
 {
@@ -2396,8 +2077,8 @@ for( iter=context->ByteCode.begin();
       case 0x06: imag(context,iter->p1,iter->p2); break;
       case 0x07: equals(context,iter->p1,iter->p2); break;
       case 0x08: discover(context,iter->p1,iter->p2); break;
-      case 0x09: break;
-      case 0x0A: break;// 
+      case 0x09: break;//Reserved:String cast
+      case 0x0A: break;//Reserved:Number cast
       case 0x0B: show(context,iter->p1,iter->p2); break;
       case 0x0C: seg(context,iter->p1,iter->p2);break;
       case 0x0D: chdir(context,iter->p1,iter->p2); break;
@@ -2422,20 +2103,20 @@ for( iter=context->ByteCode.begin();
       case 0x27: trans_op< foLn<float>, foSqrt< complex<float>>>(context,iter); break;
       case 0x28: trans_op< foLog<float>, foSqrt< complex<float>>>(context,iter); break;
       case 0x29: trans_op< foExp<float>, foSqrt< complex<float>>>(context,iter); break;
-      case 0x30: ft(context,iter->p1,iter->p2); break;
-      case 0x31: ift(context,iter->p1,iter->p2); break;
 
-      case 0xF0: call(context,iter); break;
-      case 0xF1: jump(context,iter); break;
-      //case 0xF2: iltj(context,iter); break;
-      case 0xF2: itj(context,iter); break;
-      case 0xF3: logic_op< greater<float> >(context,iter); break;
-      case 0xF4: logic_op< less<float> >(context,iter); break;
-      case 0xF5: logic_op< greater_equal<float> >(context,iter); break;
-      case 0xF6: logic_op< less_equal<float> >(context,iter); break;
-      case 0xF7: logic_op< not_equal_to<float> >(context,iter); break;
-      case 0xF8: logic_op< equal_to<float> >(context,iter); break;
-      case 0xF9: unary_logic_op< logical_not<float> >(context,iter); break;
+      case 0x30: call(context,iter); break;
+      case 0x31: jump(context,iter); break;
+      //case 0x32: iltj(context,iter); break;
+      case 0x32: itj(context,iter); break;
+      case 0x33: logic_op< greater<float> >(context,iter); break;
+      case 0x34: logic_op< less<float> >(context,iter); break;
+      case 0x35: logic_op< greater_equal<float> >(context,iter); break;
+      case 0x36: logic_op< less_equal<float> >(context,iter); break;
+      case 0x37: logic_op< not_equal_to<float> >(context,iter); break;
+      case 0x38: logic_op< equal_to<float> >(context,iter); break;
+      case 0x39: unary_logic_op< logical_not<float> >(context,iter); break;
+
+      default: ml_evaulate( context, *iter );
      };
    }
 }
@@ -2487,12 +2168,9 @@ for( iter=context->ByteCode.begin();
       case 0x28: *ois << "rlln " << iter->p1 <<" , " << iter->p2 << endl; break;
       case 0x29: *ois << "rlexp " << iter->p1 <<" , " << iter->p2 << endl; break;
 
-      case 0x30: *ois << "ft " << iter->p1 <<" , " << iter->p2 << endl; break;
-      case 0x31: *ois << "ift " << iter->p1 <<" , " << iter->p2 << endl; break;
-
-      case 0xF0: *ois << "call " << iter->p1 <<" , " << iter->p2 << endl; break;
-      case 0xF1: *ois << "jump " << iter->p1 <<" , " << iter->p2 << endl; break;
-      case 0xF2: *ois << "ilt " << iter->p1 <<" , " << iter->p2 << endl; break;
+      case 0x30: *ois << "call " << iter->p1 <<" , " << iter->p2 << endl; break;
+      case 0x31: *ois << "jump " << iter->p1 <<" , " << iter->p2 << endl; break;
+      case 0x32: *ois << "ilt " << iter->p1 <<" , " << iter->p2 << endl; break;
       };
    }
 }
