@@ -73,6 +73,23 @@ ltrim(str);
 rtrim(str);
 return str;
 }
+
+inline bool FindString( std::string cmd, std::list<string>& lcomp, int* pret )
+{
+int i = 1;
+*pret = 0;
+std::list<string>::iterator istr;
+for( istr =  lcomp.begin();
+     istr != lcomp.end();
+     istr++, i++ ){
+   if( cmd.find(*istr) ==  0){
+      *pret = i;
+      return true;
+      }
+   }
+return false;
+}
+
 //-------------------------------------------
 // This function assumes that the string does not have even paired braces.
 // It assumes that the first open brace has been found an it is given a string 
@@ -248,6 +265,27 @@ public:
          getline(*pis,cmd);
          }
       }
+   stBlock(std::istream* pis,string prompt,std::list<string>& lcomp, int* pret, string& rcmd ){
+      string cmd;
+      goto START;
+      while( !FindString(cmd, lcomp, pret) ){
+         if( cmd.find("exit") == 0 ){
+            exit(0);
+            }
+         else if( cmd.find("function") == 0 ){
+            cout << "Key word \"function\" not allowed in here, but it's cool, keep on typing." << endl;
+            }
+         else{
+            st_list.push_back( new stRoot(pis, cmd) );
+            }
+         START:
+         if( ShowPrompt ){
+            cout << prompt;
+            }
+         getline(*pis,cmd);
+         }
+      rcmd = cmd;
+      }
    void Produce(rlContext* context){
       list<SyntaxTree*>::iterator ist;
       for( ist = st_list.begin(); ist != st_list.end(); ist++ ){
@@ -322,15 +360,33 @@ public:
       }
 };
 
+// Supports if / elseif / else.  Elseif is supported by a recursive call to stIf(..)
 class stIf : public SyntaxTree
 {
 public:
    SyntaxTree* st_conditional;
-   SyntaxTree* st_block;
+   SyntaxTree* st_if_block;
+   SyntaxTree* st_else_block;
 
    stIf(std::istream* pis, string s){
+      int ret;
+      string rcmd;
+      st_else_block = 0;
+      std::list<std::string> elist;
+      elist.push_back( "end" );     // 1
+      elist.push_back( "elseif " );  // 2
+      elist.push_back( "else" );   // 3
       Parse( &st_conditional, s);
-      st_block = new stBlock(pis,"if>>","eif"); // Doesn't exit until user enters "eif"
+      st_if_block = new stBlock(pis,"if>>",elist, &ret, rcmd);
+      if( ret!=1 ){ // Something other than end was used to break out of the loop.
+         if( ret==3 ){ 
+            elist.pop_back(); elist.pop_back(); // else has been used.  Once it is used else and elseif are no longer valid.
+            st_else_block = new stBlock(pis,"else>>",elist, &ret, rcmd);
+            }
+         else if( ret==2 ){
+            st_else_block = new stIf(pis, rcmd.substr(7,string::npos) );
+            }
+         }
       }
    void Produce(rlContext* context){
       //ex: if i<10
@@ -352,9 +408,22 @@ public:
 
       int size_before_block = context->ByteCode.size();
 
-      st_block->Produce(context);           // Write block commands
+      st_if_block->Produce(context);           // Write block commands
+      if( st_else_block ){
+         rlTupple tup1; 
+         tup1.p1=0; 
+         tup1.p2=0;
+         tup1.cmd = 0x31; // jump
+         context->ByteCode.push_back(tup1); 
+         }
 
       context->ByteCode[size_before_block-1].p1 = context->ByteCode.size() - size_before_block; // Jump over the byte code
+
+      if( st_else_block ){
+         size_before_block = context->ByteCode.size();  
+         st_else_block->Produce(context);           // Write block commands
+         context->ByteCode[size_before_block-1].p1 = context->ByteCode.size() - size_before_block; // Jump over the byte code
+         }
       }
 };
 
@@ -569,6 +638,28 @@ public:
       }
 };
 
+class stRemove : public SyntaxTree
+{
+public:
+   string value;
+   stRemove(string rs){
+      value = trim(rs);
+      }
+   void Produce(rlContext* context){
+      rlTupple tup;
+      RLLITERALS::iterator lit = std::find(context->Literals.begin(),context->Literals.end(),value);
+      if( lit==context->Literals.end() ){
+         context->Literals.push_back(value);
+         tup.p1 = context->Literals.size() - 1;
+         }
+      else{
+         tup.p1 = lit - context->Literals.begin();
+         }
+      tup.cmd = 0x1E; // remove
+      context->ByteCode.push_back(tup);
+      }
+};
+
 class stCall : public SyntaxTree
 {
 public:
@@ -641,7 +732,7 @@ for(int n=1; n<=s.size(); n++ ){
       }
    pos=s1.find("ls");
    if( pos==0 ){
-      *ppST = new stUnaryOperator<0x0E>(s.substr(pos+2));
+      *ppST = new stNullaryOperator<0x0E>(s.substr(pos+2));
       return;
       }
    pos=s1.find("sum ");
@@ -746,11 +837,22 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stTwoParm<0x02>(s.substr(pos+6));
       return;
       }
+   pos=s1.find("remove ");
+   if( pos==0 ){
+      *ppST = new stRemove(s.substr(pos+7));
+      return;
+      }
    pos=s1.find("complex ");
    if( pos==0 ){
       *ppST = new stUnaryOperator<0x04>(s.substr(pos+8));
       return;
       }
+   pos=s1.find("variables");
+   if( pos==0 ){
+      *ppST = new stNullaryOperator<0x1D>(s.substr(pos+9));
+      return;
+      }
+
 
    //---------------------------------------------
    // This is where the parser is specialized for
@@ -960,6 +1062,14 @@ switch( rlv.type ){
    };
 }
 
+void sv(rlContext* context, long p1, long p2)
+{
+RLVALUEMAP::iterator iter = context->Locals.begin();
+for( ;iter!=context->Locals.end();iter++ ){
+   cout << iter->first << endl;
+   }
+}
+
 bool isnumeric(string st) 
 {
     int len = st.length(), ascii_code, decimal_count = -1, negative_count = -1;
@@ -1025,6 +1135,13 @@ else if( rlv.type==TYPE_STRING ){
       context->Stack.push_front( nv );
       }
    }
+}
+
+void remove(rlContext* context, long p1, long p2)
+{
+RunTimeAssert( context->Literals.size()>=p1, "Run time error. String literal does not exist." )
+string ls = context->Literals[p1];
+context->Locals.erase(ls);
 }
 
 void tocomplex(rlContext* context, long p1, long p2)
@@ -2094,6 +2211,8 @@ for( iter=context->ByteCode.begin();
       case 0x1A: size(context,iter->p1,iter->p2); break;
       case 0x1B: sum(context,iter->p1,iter->p2); break;
       case 0x1C: neg(context,iter->p1,iter->p2); break;
+      case 0x1D: sv(context,iter->p1,iter->p2); break;
+      case 0x1E: remove(context,iter->p1,iter->p2); break;
 
       case 0x20: trig(context,iter->p1,iter->p2); break;
       case 0x23: line(context,iter->p1,iter->p2); break;

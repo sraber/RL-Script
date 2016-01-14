@@ -165,6 +165,24 @@ public:
    virtual void Produce(rlContext* context) = 0;
 };
 
+// Use this template for nullary operators
+template< const long cmd, const long p1=0, const long p2=0 > 
+class stNullaryOperator : public SyntaxTree
+{
+public:
+   stNullaryOperator(std::string rs){
+      string ns = trim(rs);
+      SyntaxAssert( ns.size()==0, "Nullary operator should not be followed by parameters." )
+      }
+   void Produce(rlContext* context){
+      rlTupple tup;
+      tup.cmd = cmd;
+      tup.p1 = p1;
+      tup.p2 = p2;
+      context->ByteCode.push_back(tup);
+      }
+};
+
 // Use this template for unary operators
 template< const long cmd, const long p1=0, const long p2=0 > 
 class stUnaryOperator : public SyntaxTree
@@ -172,7 +190,7 @@ class stUnaryOperator : public SyntaxTree
 public:
    SyntaxTree* st1;
    stUnaryOperator(std::string rs){
-      Parse( &st1, rs );
+      Parse(&st1, rs);
       }
    void Produce(rlContext* context){
       st1->Produce(context);
