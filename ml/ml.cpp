@@ -92,7 +92,7 @@ return false;
 
 //-------------------------------------------
 // This function assumes that the string does not have even paired braces.
-// It assumes that the first open brace has been found an it is given a string 
+// It assumes that the first open brace has been found and it is given a string 
 // that points one character past that.  There may be nested pairs of braces so 
 // count up for each  open and count down for each close.  When the count reaches
 // zero the character position.
@@ -114,6 +114,27 @@ for(unsigned int i=0;i<str.length();i++){
       }
    }
 ThrowSyntaxAssert( "No closing brace" )
+return 0; // will never hit this line.
+}
+
+// Could have used a template.
+size_t FindClosingSquareBrace( string &str )
+{
+int open = 0;
+for(unsigned int i=0;i<str.length();i++){
+   if( str[i]=='[' ){
+      open++;
+      }
+   else if( str[i]==']' ){
+      if( !open ){
+         return (size_t)i;
+         }
+      else{
+         open--;
+         }
+      }
+   }
+ThrowSyntaxAssert( "No closing square brace" )
 return 0; // will never hit this line.
 }
 //--------------------------------------------
@@ -154,6 +175,7 @@ switch(v.type ){
       {
       nv.type = TYPE_STRING;
       nv.stringValue = new string(*v.stringValue);
+      nv.size = v.size;
       }
       break;
    case TYPE_NUMBER:
@@ -602,6 +624,26 @@ public:
       }
 };
 
+class stIndex : public SyntaxTree
+{
+public:
+   SyntaxTree* st1;
+   SyntaxTree* st2;
+   stIndex(string strlit, string bracket){
+      Parse( &st1, strlit );
+      Parse( &st2, bracket );
+      }
+   void Produce(rlContext* context){
+      st2->Produce(context);
+      st1->Produce(context);
+      rlTupple tup;
+      tup.cmd = 0x0C; //SEG code
+      tup.p1 = 1;     //Cause SEG to use two parameter method
+      tup.p2 = 0;
+      context->ByteCode.push_back(tup);
+      }
+};
+
 class stCrop : public SyntaxTree
 {
 public:
@@ -894,6 +936,10 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stBinaryOperator<0x13>(s.substr(0,n-1), s.substr(n,string::npos) );
       return;
       }
+   else if( s[n-1]=='/' ){
+      *ppST = new stBinaryOperator<0x14>(s.substr(0,n-1), s.substr(n,string::npos) );
+      return;
+      }
    else if( s[n-1]=='>' ){
       if( n>1 && s[n]=='=' ){
          *ppST = new stBinaryOperator<0x35>(s.substr(0,n-1), s.substr(n+1,string::npos) );
@@ -936,6 +982,23 @@ for(int n=1; n<=s.size(); n++ ){
       else{
          n=pos+2;
          }
+      }
+   else if( s[n-1]=='[' ){
+      int pos = FindClosingSquareBrace( s.substr(n,string::npos) );
+      SyntaxAssert( pos, "empty braces." )
+      // Adding 2 accounts for the open and close brace.
+      //*ppST = new stIndex( s.substr(0,n-1),s.substr(n,pos) );
+      //return;
+
+      // Adding 2 accounts for the open and close brace.
+      if( (n+pos+1)==s.length() ){
+         *ppST = new stIndex( s.substr(0,n-1),s.substr(n,pos) );
+         return;
+         }
+      else{
+         n=pos+2;
+         }
+
       }
    }
 
@@ -1034,6 +1097,7 @@ void strliteral(rlContext* context, long p1, long p2)
 Value rlv;
 rlv.stringValue = new string;
 *rlv.stringValue = context->Literals[p1]; 
+rlv.size = rlv.stringValue->size();
 rlv.type = TYPE_STRING;
 context->Stack.push_front(rlv);
 }
@@ -1238,32 +1302,51 @@ void seg(rlContext* context, long p1, long p2)
 Value rlv;
 Value sv;
 Value ev;
+Value nv;
 int s,e,n;
 
-RunTimeAssert( context->Stack.size()>=3, "Run time error. Not enough parameters on the stack for \"seg\" command." )
+if( p1 ){
+   RunTimeAssert( context->Stack.size()>=2, "Run time error. Not enough parameters on the stack for \"seg\" command." )
 
-rlv = context->Stack.front();
-context->Stack.pop_front();
+   rlv = context->Stack.front();
+   context->Stack.pop_front();
 
-sv = context->Stack.front();
-context->Stack.pop_front();
+   sv = context->Stack.front();
+   context->Stack.pop_front();
 
-ev = context->Stack.front();
-context->Stack.pop_front();
-
-Value nv;
-if( rlv.type==TYPE_STRING ){
-   nv.type=TYPE_STRING;
-   nv.stringValue = new string;
-   (*nv.stringValue) = rlv.stringValue->substr((long)(sv.numberValue[0]),(long)(ev.numberValue[0]-sv.numberValue[0]));
-   }
-else if( rlv.type==TYPE_NUMBER ){
    n = rlv.size;
    s = sv.numberValue[0];
+   RunTimeAssert( s < n, "Run time error. Start value greater than array size." )
+   e = s+1;
+   }
+else{
+   RunTimeAssert( context->Stack.size()>=3, "Run time error. Not enough parameters on the stack for \"seg\" command." )
+
+   rlv = context->Stack.front();
+   context->Stack.pop_front();
+
+   sv = context->Stack.front();
+   context->Stack.pop_front();
+
+   ev = context->Stack.front();
+   context->Stack.pop_front();
+
+   n = rlv.size;
+   s = sv.numberValue[0];
+   RunTimeAssert( s < n, "Run time error. Start value greater than array size." )
    e = ev.numberValue[0];
    if( !e ){ e = n; }
    if( e > n ){ e = n; }
    RunTimeAssert( s <= e, "Run time error. Start value greater than end value." )
+   }
+
+if( rlv.type==TYPE_STRING ){
+   nv.type=TYPE_STRING;
+   nv.stringValue = new string;
+   (*nv.stringValue) = rlv.stringValue->substr(s,e-s);
+   nv.size = nv.stringValue->size();
+   }
+else if( rlv.type==TYPE_NUMBER ){
    nv.CleanUp();
    nv.pvr = rlv.pvr;
    // NOTE: If the number Value is released first then this temp
@@ -1272,17 +1355,9 @@ else if( rlv.type==TYPE_NUMBER ){
    nv.size = (int)(e-s);
    // The type must be set after Cleanup is called.
    nv.type = TYPE_NUMBER;
-   nv.numberValue = rlv.numberValue + (long)(sv.numberValue[0]);
-   context->Stack.push_front( nv );
-   return;
+   nv.numberValue = rlv.numberValue + s;
    }
 else if( rlv.type==TYPE_COMPLEX ){
-   n = rlv.size;
-   s = sv.numberValue[0];
-   e = ev.numberValue[0];
-   if( !e ){ e = n; }
-   if( e > n ){ e = n; }
-   RunTimeAssert( s <= e, "Run time error. Start value greater than end value." )
    nv.CleanUp();
    nv.pvr = rlv.pvr;
    // NOTE: If the complex number Value is released first then this temp
@@ -1296,14 +1371,14 @@ else if( rlv.type==TYPE_COMPLEX ){
    //REVIEW: The 2 element float* array is going to leak!
 
    nv.complexValue = new float*[2];
-   nv.complexValue[0] = rlv.complexValue[0] + (long)(sv.numberValue[0]);
-   nv.complexValue[1] = rlv.complexValue[1] + (long)(sv.numberValue[0]);
-   context->Stack.push_front( nv );
-   return;
+   nv.complexValue[0] = rlv.complexValue[0] + s;
+   nv.complexValue[1] = rlv.complexValue[1] + s;
    }
 else{
    ThrowRunTimeAssert( "Run time error." )
    }
+
+context->Stack.push_front( nv );
 }
 
 void conj(rlContext* context, long p1, long p2)
@@ -1351,6 +1426,7 @@ switch( rv.type ){
       else{
          if( lv.type==TYPE_STRING ){
             (*lv.stringValue) = (*rv.stringValue);
+            lv.size = rv.size;
             }
          else{
             ThrowRunTimeAssert( "Wrong type for lvalue." )
@@ -1873,6 +1949,7 @@ else if( s1.type==TYPE_STRING ){
    rslt.type = TYPE_STRING;
    rslt.stringValue = new string;
    *rslt.stringValue = *s1.stringValue + *s2.stringValue;
+   rslt.size = rslt.stringValue->size();
    }
 else{
    ThrowRunTimeAssertEx( "Yur asking me to " << typeid(T).name() << " things that can't be added!")
@@ -1905,28 +1982,76 @@ RunTimeAssert( s1.type==s2.type,"Different types passed to binary math operator.
 Value rslt;
 if( s1.type==TYPE_NUMBER ){
    rslt.type = TYPE_NUMBER;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   (rslt.numberValue) = new float[n]; 
-   rslt.size = n;
-   float* is1 = s1.numberValue;
-   float* is2 = s2.numberValue;
-   float* it = rslt.numberValue;
-   float* iend = is1 + n;
-   for( ;is1<iend;is1++,is2++,it++ ){ *it = op(*is1, *is2); }
+   if( s1.size==1 ){
+      unsigned long n = s2.size;
+      (rslt.numberValue) = new float[n]; 
+      rslt.size = n;
+      float* is1 = s1.numberValue;
+      float* is2 = s2.numberValue;
+      float* it = rslt.numberValue;
+      float* iend = is2 + n;
+      for( ;is2<iend;is2++,it++ ){ *it = op(*is1, *is2); }
+      }
+   else if( s2.size==1 ){
+      unsigned long n = s1.size;
+      (rslt.numberValue) = new float[n]; 
+      rslt.size = n;
+      float* is1 = s1.numberValue;
+      float* is2 = s2.numberValue;
+      float* it = rslt.numberValue;
+      float* iend = is1 + n;
+      for( ;is1<iend;is1++,it++ ){ *it = op(*is1, *is2); }
+      }
+   else{
+      unsigned long n = s1.size;
+      if( s2.size < n ){ n = s2.size; }
+      (rslt.numberValue) = new float[n]; 
+      rslt.size = n;
+      float* is1 = s1.numberValue;
+      float* is2 = s2.numberValue;
+      float* it = rslt.numberValue;
+      float* iend = is1 + n;
+      for( ;is1<iend;is1++,is2++,it++ ){ *it = op(*is1, *is2); }
+      }
    }
 else if( s1.type==TYPE_COMPLEX ){
    rslt.type = TYPE_COMPLEX;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   rslt.complexValue = new float*[2];
-   rslt.complexValue[0] = new float[n]; 
-   rslt.complexValue[1] = new float[n]; 
-   rslt.size = n;
-   for( int i=0;i<n;i++ ){ 
-      complex<float> crslt = cop( complex<float>( s1.complexValue[0][i],s1.complexValue[1][i] ) , complex<float>(s2.complexValue[0][i],s2.complexValue[1][i]) );
-      rslt.complexValue[0][i] = crslt.real(); 
-      rslt.complexValue[1][i] = crslt.imag(); 
+   if( s1.size==1 ){
+      unsigned long n = s2.size;
+      rslt.complexValue = new float*[2];
+      rslt.complexValue[0] = new float[n]; 
+      rslt.complexValue[1] = new float[n]; 
+      rslt.size = n;
+      for( int i=0;i<n;i++ ){ 
+         complex<float> crslt = cop( complex<float>( s1.complexValue[0][0],s1.complexValue[1][0] ) , complex<float>(s2.complexValue[0][i],s2.complexValue[1][i]) );
+         rslt.complexValue[0][i] = crslt.real(); 
+         rslt.complexValue[1][i] = crslt.imag(); 
+         }
+      }
+   else if( s2.size==1 ){
+      unsigned long n = s1.size;
+      rslt.complexValue = new float*[2];
+      rslt.complexValue[0] = new float[n]; 
+      rslt.complexValue[1] = new float[n]; 
+      rslt.size = n;
+      for( int i=0;i<n;i++ ){ 
+         complex<float> crslt = cop( complex<float>( s1.complexValue[0][i],s1.complexValue[1][i] ) , complex<float>(s2.complexValue[0][0],s2.complexValue[1][0]) );
+         rslt.complexValue[0][i] = crslt.real(); 
+         rslt.complexValue[1][i] = crslt.imag(); 
+         }
+      }
+   else{
+      unsigned long n = s1.size;
+      if( s2.size < n ){ n = s2.size; }
+      rslt.complexValue = new float*[2];
+      rslt.complexValue[0] = new float[n]; 
+      rslt.complexValue[1] = new float[n]; 
+      rslt.size = n;
+      for( int i=0;i<n;i++ ){ 
+         complex<float> crslt = cop( complex<float>( s1.complexValue[0][i],s1.complexValue[1][i] ) , complex<float>(s2.complexValue[0][i],s2.complexValue[1][i]) );
+         rslt.complexValue[0][i] = crslt.real(); 
+         rslt.complexValue[1][i] = crslt.imag(); 
+         }
       }
    }
 else{
