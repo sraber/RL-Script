@@ -90,6 +90,15 @@ for( istr =  lcomp.begin();
 return false;
 }
 
+void MakeComplex( Value& s, long size )
+{
+s.type = TYPE_COMPLEX;
+s.size = size;
+s.complexValue = new float*[2];
+s.complexValue[0] = new float[size]; 
+s.complexValue[1] = new float[size]; 
+}
+
 //-------------------------------------------
 // This function assumes that the string does not have even paired braces.
 // It assumes that the first open brace has been found and it is given a string 
@@ -136,6 +145,17 @@ for(unsigned int i=0;i<str.length();i++){
    }
 ThrowSyntaxAssert( "No closing square brace" )
 return 0; // will never hit this line.
+}
+
+size_t FindParameterEnd(std::string rs, size_t p1 )
+{
+size_t pos = rs.find_first_of(",(",p1);
+if(pos==string::npos){ return pos; }
+while(rs[pos]=='('){
+   pos = FindClosingBrace( rs.substr(pos+1,string::npos) );
+   pos = rs.find_first_of(",(",pos);
+   }
+return pos;
 }
 //--------------------------------------------
 
@@ -569,11 +589,11 @@ public:
    stThreeParmWithOptions(string rs){
       size_t pos1, pos2;
 
-      pos1 = rs.find_first_of( "," );
+      pos1 = FindParameterEnd(rs);
       SyntaxAssertEx( pos1!=string::npos, "Not enough parameters for byte code: " << cmd )
       Parse( &st1, rs.substr(0,pos1) );
       pos1++; // step past the comma
-      pos2 = rs.find_first_of( ",", pos1 );
+      pos2 = FindParameterEnd(rs, pos1 );
       if( pos2==string::npos ){
          SyntaxAssertEx( pos1<=rs.size(), "Not enough parameters for byte code: " << cmd )
          Parse( &st2, rs.substr(pos1) );
@@ -654,12 +674,12 @@ public:
       size_t pos1, pos2;
 
       pos1 = 0;
-      pos2 = rs.find_first_of( "," );
+      pos2 = FindParameterEnd(rs);
       SyntaxAssert( pos2!=string::npos, "not enough parameters for crop command. Syntax: crop [array], [start], [length]" )
       Parse( &st1, rs.substr(pos1,pos2-pos1) );
       pos1=pos2+1;
 
-      pos2 = rs.find_first_of( ",", pos1 );
+      pos2 = FindParameterEnd(rs, pos1);
       SyntaxAssert( pos2!=string::npos ,"not enough parameters for crop command. Syntax: crop [array], [start], [length]" )
       Parse( &st2, rs.substr(pos1,pos2-pos1) );
       pos1=pos2+1;
@@ -886,12 +906,12 @@ for(int n=1; n<=s.size(); n++ ){
       }
    pos=s1.find("complex ");
    if( pos==0 ){
-      *ppST = new stUnaryOperator<0x04>(s.substr(pos+8));
+      *ppST = new stTwoParm<0x04>(s.substr(pos+8));
       return;
       }
-   pos=s1.find("variables");
+   pos=s1.find("values");
    if( pos==0 ){
-      *ppST = new stNullaryOperator<0x1D>(s.substr(pos+9));
+      *ppST = new stNullaryOperator<0x1D>(s.substr(pos+6));
       return;
       }
 
@@ -1210,32 +1230,28 @@ context->Locals.erase(ls);
 
 void tocomplex(rlContext* context, long p1, long p2)
 {
-Value rlv;
-RunTimeAssert( context->Stack.size()>=1, "Run time error. Not enough parameters on the stack for \"complex\" command." )
+Value rv;
+Value iv;
+RunTimeAssert( context->Stack.size()>=2, "Run time error. Not enough parameters on the stack for \"complex\" command." )
 
-rlv = context->Stack.front();
-if( rlv.type==TYPE_COMPLEX ){
-   return;
-   }
-else if( rlv.type==TYPE_NUMBER ){
-   Value nv;
-   int n = rlv.size;
-   nv.type = TYPE_COMPLEX;
-   nv.size = n;
-   nv.complexValue = new float*[2];
-   nv.complexValue[0] = new float[n];
-   nv.complexValue[1] = new float[n];
-   for(int i=0;i<n;i++){
-      nv.complexValue[0][i] = rlv.numberValue[i];
-      nv.complexValue[1][i] = 0.0f;
-      }
+rv = context->Stack.front();
+context->Stack.pop_front();
+iv = context->Stack.front();
+context->Stack.pop_front();
 
-   context->Stack.pop_front();
-   context->Stack.push_front( nv );
-   return;
+RunTimeAssert( rv.type==TYPE_NUMBER, "Run time error. \"complex\" command parameters must be a real ." )
+RunTimeAssert( iv.type==TYPE_NUMBER, "Run time error. \"complex\" command parameters must be a real ." )
+
+
+Value nv;
+int n = rv.size > iv.size ? iv.size : rv.size;
+MakeComplex(nv,n);
+for(int i=0;i<n;i++){
+   nv.complexValue[0][i] = rv.numberValue[i];
+   nv.complexValue[1][i] = iv.numberValue[i];
    }
 
-ThrowRunTimeAssert( "Run time error. Whatever it was that you wanted to turn complex it can't be done." )
+context->Stack.push_front( nv );
 }
 
 void real(rlContext* context, long p1, long p2)

@@ -159,6 +159,8 @@ RLVALUEMAP& Locals;
 rlContext(RLBYTES& _val_bytes, RLLITERALS& _literals, RLVALUEMAP& _val_map, RLVALUELIST& _stack) : ByteCode(_val_bytes), Literals(_literals), Locals(_val_map), Stack(_stack){}
 };
 
+size_t FindParameterEnd(std::string rs, size_t pos = 0);
+
 class SyntaxTree
 {
 public:
@@ -229,7 +231,7 @@ public:
    SyntaxTree* st1;
    SyntaxTree* st2;
    stTwoParm(std::string rs){
-      size_t pos = rs.find_first_of(",");
+      size_t pos = FindParameterEnd(rs);
       SyntaxAssert( pos!=string::npos, "Not enough parameters for byte code: " )
       Parse( &st1, rs.substr(0,pos));
       Parse( &st2, rs.substr(pos+1));
@@ -254,11 +256,11 @@ public:
    SyntaxTree* st3;
    stThreeParm(std::string rs){
       size_t pos1, pos2;
-      pos1 = rs.find_first_of( "," );
+      pos1 = FindParameterEnd(rs);
       SyntaxAssertEx( pos1!=std::string::npos, "Not enough parameters for byte code: " << cmd )
       Parse( &st1, rs.substr(0,pos1) );
       pos1++; // step past the comma
-      pos2 = rs.find_first_of( ",", pos1 );
+      pos2 = FindParameterEnd(rs, pos1 );
       SyntaxAssertEx( pos2!=std::string::npos, "Not enough parameters for byte code: " << cmd )
       Parse( &st2, rs.substr(pos1,pos2-pos1) );
       pos2++;
@@ -283,4 +285,4 @@ void Parse(SyntaxTree**ppST,std::string s);
 void ml_start(char* your_language_name, char* your_prompt );
 
 std::string &trim(std::string &str);
-
+void MakeComplex( Value& s, long size );
