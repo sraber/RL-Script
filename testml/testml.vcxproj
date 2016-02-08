@@ -84,6 +84,7 @@
   <ItemGroup>
     <ClCompile Include="..\ml\Debug.cpp" />
     <ClCompile Include="..\ml\ml.cpp" />
+    <ClCompile Include="..\ml\mlhelp.cpp" />
     <ClCompile Include="..\ml\SysError.cpp" />
     <ClCompile Include="testml.cpp" />
   </ItemGroup>

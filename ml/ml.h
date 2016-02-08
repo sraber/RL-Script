@@ -4,6 +4,10 @@
 #include <list>
 #include <Debug.h>
 
+typedef std::map<std::string,std::string> HELP_MAP;
+extern HELP_MAP HelpMap;
+void PopulateMLHelpMap(void);
+
 //--------------------------------------------
 //    Value representation
 //

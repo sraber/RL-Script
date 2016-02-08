@@ -46,6 +46,8 @@ void ml_evaulate( rlContext* context, rlTupple& rlt );
 //}
 //--------------------------------------------
 
+HELP_MAP HelpMap;
+
 //--------------------------------------------
 // Some string manipulation code
 static inline string &ltrim(string &str)
@@ -853,6 +855,11 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stThreeParmWithOptions<0x23>(s.substr(pos+5));
       return;
       }
+   pos=s1.find("help");
+   if( pos==0 && s.size()==4 ){
+      *ppST = new stNullaryOperator<0x19>(s.substr(pos+4));
+      return;
+      }
    // Yes, this is a second command based on the same byte code.
    pos=s1.find("line ");
    if( pos==0 ){
@@ -1028,7 +1035,7 @@ for(int n=1; n<=s.size(); n++ ){
 void ml_start(char* your_language_name, char* your_prompt )
 {
 string cmd;
-
+PopulateMLHelpMap();
 HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE); 
 if (hStdout != INVALID_HANDLE_VALUE) { SetConsoleTextAttribute(hStdout, FOREGROUND_RED | BACKGROUND_BLUE | FOREGROUND_INTENSITY); }
 cout << "Welcome to " << your_language_name << "." << endl << "A scripting language based on MyLanguage." << endl << endl; 
@@ -2316,6 +2323,29 @@ else{
 context->Stack.push_front( rslt );
 }
 
+//////////////////////////////////////////////////////////////
+//     Help
+//////////////////////////////////////////////////////////////
+
+void help(rlContext* context, long p1, long p2)
+{
+Value s1;
+//RunTimeAssert( context->Stack.size()>=1 , "Run time error. Not enough parameters on the stack for \"conj\" command." )
+
+//s1 = context->Stack.front();
+//context->Stack.pop_front();
+//if( s1.type!=TYPE_STRING ){
+//   return;
+//   }
+
+HELP_MAP::iterator hit;
+for( hit = HelpMap.begin();
+     hit!= HelpMap.end();
+     hit++ ){
+   cout << hit->first << endl;
+   }
+}
+
 /////////////////////////////////////////////////////////////
 //          Byte Code Evaulator
 /////////////////////////////////////////////////////////////
@@ -2349,6 +2379,8 @@ for( iter=context->ByteCode.begin();
       case 0x15: inc(context,iter); break;
       case 0x18: conj(context,iter->p1,iter->p2); break;
 
+      case 0x19: help(context,iter->p1,iter->p2); break;
+
       case 0x1A: size(context,iter->p1,iter->p2); break;
       case 0x1B: sum(context,iter->p1,iter->p2); break;
       case 0x1C: neg(context,iter->p1,iter->p2); break;
@@ -2360,9 +2392,9 @@ for( iter=context->ByteCode.begin();
       case 0x24: noise(context,iter->p1,iter->p2); break;
 
       case 0x26: trans_op< foSqrt<float>, foSqrt< complex<float>>>(context,iter); break;
-      case 0x27: trans_op< foLn<float>, foSqrt< complex<float>>>(context,iter); break;
-      case 0x28: trans_op< foLog<float>, foSqrt< complex<float>>>(context,iter); break;
-      case 0x29: trans_op< foExp<float>, foSqrt< complex<float>>>(context,iter); break;
+      case 0x27: trans_op< foLn<float>, foLn< complex<float>>>(context,iter); break;
+      case 0x28: trans_op< foLog<float>, foLog< complex<float>>>(context,iter); break;
+      case 0x29: trans_op< foExp<float>, foExp< complex<float>>>(context,iter); break;
 
       case 0x30: call(context,iter); break;
       case 0x31: jump(context,iter); break;
