@@ -795,7 +795,9 @@ for(int n=1; n<=s.size(); n++ ){
       return;
       }
    pos=s1.find("ls");
-   if( pos==0 ){
+                                 // Making sure the fill string length is only 2
+   if( pos==0 && s.size()==2 ){  // allows other things such as variable names to contain
+                                 // the characters ls.
       *ppST = new stNullaryOperator<0x0E>(s.substr(pos+2));
       return;
       }
@@ -858,6 +860,11 @@ for(int n=1; n<=s.size(); n++ ){
    pos=s1.find("help");
    if( pos==0 && s.size()==4 ){
       *ppST = new stNullaryOperator<0x19>(s.substr(pos+4));
+      return;
+      }
+   pos=s1.find("help ");
+   if( pos==0 ){
+      *ppST = new stUnaryOperator<0x19,1>(s.substr(pos+4));
       return;
       }
    // Yes, this is a second command based on the same byte code.
@@ -2329,20 +2336,27 @@ context->Stack.push_front( rslt );
 
 void help(rlContext* context, long p1, long p2)
 {
-Value s1;
-//RunTimeAssert( context->Stack.size()>=1 , "Run time error. Not enough parameters on the stack for \"conj\" command." )
-
-//s1 = context->Stack.front();
-//context->Stack.pop_front();
-//if( s1.type!=TYPE_STRING ){
-//   return;
-//   }
-
-HELP_MAP::iterator hit;
-for( hit = HelpMap.begin();
-     hit!= HelpMap.end();
-     hit++ ){
-   cout << hit->first << endl;
+if(p1){
+   Value s1;
+   RunTimeAssert( context->Stack.size()>=1 , "Run time error. Not enough parameters on the stack for \"conj\" command." )
+   s1 = context->Stack.front();
+   context->Stack.pop_front();
+   RunTimeAssert( s1.type==TYPE_STRING, "Run time error. Help parameter must be a string." )
+   HELP_MAP::iterator hit = HelpMap.find(*s1.stringValue);
+   if( hit!=HelpMap.end() ){
+      cout << hit->second << endl;
+      }
+   else{
+      cout << "Could not find help for " << *s1.stringValue << "." << endl;
+      }
+   }
+else{
+   HELP_MAP::iterator hit;
+   for( hit = HelpMap.begin();
+        hit!= HelpMap.end();
+        hit++ ){
+      cout << hit->first << endl;
+      }
    }
 }
 
