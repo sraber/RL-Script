@@ -1922,7 +1922,7 @@ nv.size = n;
 std::tr1::ranlux64_base_01 eng;
 std::tr1::normal_distribution<float> generator(*(av.numberValue));
 
-for( int i=0;i<n;i++){ (nv.numberValue)[i] = generator(eng) - generator.mean(); }
+for( int i=0;i<n;i++){ (nv.numberValue)[i] = generator(eng); }
 context->Stack.push_front( nv );
 }
 
