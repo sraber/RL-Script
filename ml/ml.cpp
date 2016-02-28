@@ -1559,6 +1559,7 @@ Value nv;
 Value path;
 char buf[100];
 float val;
+RunTimeAssert( context->Stack.size()>=1 ,"Run time error. Not enough parameters on the stack for read command." )
 
 path = context->Stack.front();
 context->Stack.pop_front();
@@ -1697,16 +1698,20 @@ context->Stack.pop_front();
 ev = context->Stack.front();
 context->Stack.pop_front();
 
-if( av.type==TYPE_STRING ){
-   cout << "nothing to crop.  Parameter is not an array." << endl;
-   return;
-   }
-
 int n = (long)ev.numberValue[0];
 int s = (long)sv.numberValue[0];
-if( s+n > av.size ){ n = av.size = s; }
+if( s+n > av.size ){ n = av.size - s; }
 int m = s + n;
 Value nv;
+
+if( av.type==TYPE_STRING ){
+   nv.type = TYPE_STRING;
+   nv.size = n;
+   nv.stringValue = new string();
+   *nv.stringValue = av.stringValue->substr(s,n);
+   context->Stack.push_front( nv );
+   return;
+   }
 if( av.type==TYPE_NUMBER ){
    nv.type = TYPE_NUMBER;
    nv.size = n;
