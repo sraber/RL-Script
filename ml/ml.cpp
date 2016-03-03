@@ -833,23 +833,22 @@ for(int n=1; n<=s.size(); n++ ){
       }
    pos=s1.find("cos ");
    if( pos==0 ){
-      // byte code 0x20 is trig function, p1 indicates which function.  See the trig function for details.
-      *ppST = new stThreeParmWithOptions<0x20,0>(s.substr(pos+4));
+      *ppST = new stUnaryOperator<0x20>(s.substr(pos+4));
+      return;
+      }
+   pos=s1.find("sin ");
+   if( pos==0 ){
+      *ppST = new stUnaryOperator<0x21>(s.substr(pos+4));
+      return;
+      }
+   pos=s1.find("tan ");
+   if( pos==0 ){
+      *ppST = new stUnaryOperator<0x22>(s.substr(pos+4));
       return;
       }
    pos=s1.find("seg ");
    if( pos==0 ){
       *ppST = new stThreeParmWithOptions<0x0C>(s.substr(pos+4));
-      return;
-      }
-   pos=s1.find("sin ");
-   if( pos==0 ){
-      *ppST = new stThreeParmWithOptions<0x20,1>(s.substr(pos+4));
-      return;
-      }
-   pos=s1.find("tan ");
-   if( pos==0 ){
-      *ppST = new stThreeParmWithOptions<0x20,2>(s.substr(pos+4));
       return;
       }
    pos=s1.find("init ");
@@ -1792,6 +1791,27 @@ struct foSqrt : public unary_function<Ty, Ty>{	// functor for unary operator-
 		}
 };
 
+template<class Ty>
+struct foTan : public unary_function<Ty, Ty>{	// functor for unary operator-
+	Ty operator()(const Ty& Left) const{	// apply operator- to operand
+		return tan(Left);
+		}
+};
+
+template<class Ty>
+struct foSin : public unary_function<Ty, Ty>{	// functor for unary operator-
+	Ty operator()(const Ty& Left) const{	// apply operator- to operand
+		return sin(Left);
+		}
+};
+
+template<class Ty>
+struct foCos : public unary_function<Ty, Ty>{	// functor for unary operator-
+	Ty operator()(const Ty& Left) const{	// apply operator- to operand
+		return cos(Left);
+		}
+};
+
 template< class T, class U >
 void trans_op(rlContext* context, RLBYTES::iterator& iter)
 {
@@ -1946,51 +1966,27 @@ S sop;
 RunTimeAssert( context->Stack.size()>=2 , "Run time error. Not enough parameters on the stack for rlplus command." )
 
 s2 = context->Stack.front();
-context->Stack.pop_front();
 
-s1 = context->Stack.front();
-context->Stack.pop_front();
-
-RunTimeAssert( s1.type==s2.type,"Different types passed to binary math operator.  No can do!")
-
-Value rslt;
-if( s1.type==TYPE_NUMBER ){
-   rslt.type = TYPE_NUMBER;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   (rslt.numberValue) = new float[n]; 
-   rslt.size = n;
-   float* is1 = s1.numberValue;
-   float* is2 = s2.numberValue;
-   float* it = rslt.numberValue;
-   float* iend = is1 + n;
-   for( ;is1<iend;is1++,is2++,it++ ){ *it = op(*is1, *is2); }
+if( s2.type==TYPE_NUMBER ){
+	mathop<T,U>(context, iter);
    }
-else if( s1.type==TYPE_COMPLEX ){
-   rslt.type = TYPE_COMPLEX;
-   unsigned long n = s1.size;
-   if( s2.size < n ){ n = s2.size; }
-   rslt.complexValue = new float*[2];
-   rslt.complexValue[0] = new float[n]; 
-   rslt.complexValue[1] = new float[n]; 
-   rslt.size = n;
-   for( int i=0;i<n;i++ ){ 
-      complex<float> crslt = cop( complex<float>( s1.complexValue[0][i],s1.complexValue[1][i] ) , complex<float>(s2.complexValue[0][i],s2.complexValue[1][i]) );
-      rslt.complexValue[0][i] = crslt.real(); 
-      rslt.complexValue[1][i] = crslt.imag(); 
-      }
-   }
-else if( s1.type==TYPE_STRING ){
-   rslt.type = TYPE_STRING;
-   rslt.stringValue = new string;
-   *rslt.stringValue = *s1.stringValue + *s2.stringValue;
-   rslt.size = rslt.stringValue->size();
+else if( s2.type==TYPE_STRING ){
+	Value rslt;
+
+	context->Stack.pop_front();
+	s1 = context->Stack.front();
+	context->Stack.pop_front();
+	RunTimeAssert( s1.type==s2.type,"Different types passed to binary math operator.  No can do!")
+
+	rslt.type = TYPE_STRING;
+	rslt.stringValue = new string;
+	*rslt.stringValue = *s1.stringValue + *s2.stringValue;
+	rslt.size = rslt.stringValue->size();
+	context->Stack.push_front( rslt );
    }
 else{
    ThrowRunTimeAssertEx( "Yur asking me to " << typeid(T).name() << " things that can't be added!")
    }
-
-context->Stack.push_front( rslt );
 }
 
 // Pull value 2 off of stack.
@@ -2406,7 +2402,10 @@ for( iter=context->ByteCode.begin();
       case 0x1D: sv(context,iter->p1,iter->p2); break;
       case 0x1E: remove(context,iter->p1,iter->p2); break;
 
-      case 0x20: trig(context,iter->p1,iter->p2); break;
+      //case 0x20: trig(context,iter->p1,iter->p2); break;
+      case 0x20: trans_op< foCos<float>, foSin< complex<float>>>(context,iter); break;
+      case 0x21: trans_op< foSin<float>, foSin< complex<float>>>(context,iter); break;
+      case 0x22: trans_op< foTan<float>, foSin< complex<float>>>(context,iter); break;
       case 0x23: line(context,iter->p1,iter->p2); break;
       case 0x24: noise(context,iter->p1,iter->p2); break;
 

@@ -72,7 +72,7 @@ ostream& operator<<(ostream& s, SysError& err);
 #define ThrowRunTimeAssert( msg ) throw SysError1(msg,2);
 #define ThrowRunTimeAssertEx(msg) {\
    SafeStrStream ss;\
-   ss << msg;\
+   ss << msg << ends;\
    throw SysError1(ss.str(),2); \
    }
 #ifdef _L1ASSERT

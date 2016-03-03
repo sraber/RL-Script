@@ -10,6 +10,8 @@
 
 int _tmain(int argc, _TCHAR* argv[])
 {
+HelpMap["ft"]="ft v \nReturn the Fourier transform of the array v.";
+HelpMap["ift"]="ft v \nReturn the inverse Fourier transform of the array v.";
 ml_start("MyLanguage for DSP", "MLDSP>>");
 return 0;
 }
