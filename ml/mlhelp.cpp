@@ -26,4 +26,5 @@ HelpMap["size"]="size v \n";
 HelpMap["loop"]="loop syntax\nloop i=[s] to [e] step [s]\ncode...\nnext\nwhere s=start value\ne=end value (inclusive)\nstep (optional) is step size";
 HelpMap["function"]="Define a function with the keyword function.\nfunction MyFunction [a],[b],[...]\ncode\nend\nUse function to define a function and add as many comma delimited parameters as you like.\nThose variables will be accessible by the function code.\nJust enter a variable name on it's own line to return it.";
 HelpMap["if"]="Normal if elseif else supported.";
+HelpMap["complex"]="complex r, i\nReturn the complex value r + ji or r,i in this code.";
 }

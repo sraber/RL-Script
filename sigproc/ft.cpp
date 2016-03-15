@@ -24,3 +24,4 @@ if( isign>0 ){
    for( float* id = data; id<(data+len); id++ ){ *id *= dn; }
    }
 }
+

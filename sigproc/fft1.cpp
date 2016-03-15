@@ -168,3 +168,73 @@ int cfftsine( float * pdata, const int n, const int isign)
 	four1(pdata,n,isign);
     return 1;
 }
+
+//------------------------------------------------
+// Inputs:
+// rel_src - FFT of relitive channel (complex valued) 
+// src - FFT of channel (complex valued) 
+// len - length of complex data
+//
+// Output:
+// tar - Cross Spectral Power (complex)
+void ComputeCrossPower( float* tar, float* rel_src, float* src, long len )
+{
+float* tar_r = tar + 2;
+float* tar_i = tar + 3;
+float* rel_src_r = rel_src + 2;
+float* rel_src_i = rel_src + 3;
+float* src_r = src + 2;
+float* src_i = src + 3;
+float* end = tar + (len-1);
+
+// 2 / (len/2) * (len/2) = 2 * 4 / (len * len)
+//float m = 8.0*WindowCorrectionFactor / (float)(len * len);
+
+//--------------------------
+// FFT standard packing.  Take care of element 0 and 1.
+//*tar = (*rel_src) * (*src) * m;
+*tar = (*rel_src) * (*src);
+
+tar++;
+rel_src++;
+src++;
+//*tar = (*rel_src) * (*src) * m;
+*tar = (*rel_src) * (*src);
+//--------------------------
+
+// Tr + j Ti = (S1r S2r + S1i S2i) + j (-S1r S2i + S2r S1i)
+for( ; tar_r<end; tar_r+=2, tar_i+=2, rel_src_r+=2, rel_src_i+=2, src_r+=2, src_i+=2 ){
+   //*tar_r = ( (*rel_src_r) * (*src_r) + (*rel_src_i) * (*src_i) ) * m;
+   //*tar_i = ( (*rel_src_i) * (*src_r) - (*rel_src_r) * (*src_i) ) * m;
+   *tar_r = ( (*rel_src_r) * (*src_r) + (*rel_src_i) * (*src_i) );
+   *tar_i = ( (*rel_src_i) * (*src_r) - (*rel_src_r) * (*src_i) );
+   }
+
+}
+
+//------------------------------------------------
+// Inputs:
+// From complex valued real data.
+// rel_src - FFT of relitive channel (complex valued) 
+// src - FFT of channel (complex valued) 
+// len - length of complex data
+//
+// Output:
+// tar - Cross Spectral Power (complex)
+void cComputeCrossPower( float* tar, float* rel_src, float* src, long len )
+{
+float* tar_r = tar + 0;
+float* tar_i = tar + 1;
+float* rel_src_r = rel_src + 0;
+float* rel_src_i = rel_src + 1;
+float* src_r = src + 0;
+float* src_i = src + 1;
+float* end = tar + (len-1);
+
+// Tr + j Ti = (S1r S2r + S1i S2i) + j (-S1r S2i + S2r S1i)
+for( ; tar_r<end; tar_r+=2, tar_i+=2, rel_src_r+=2, rel_src_i+=2, src_r+=2, src_i+=2 ){
+   *tar_r = ( (*rel_src_r) * (*src_r) + (*rel_src_i) * (*src_i) );
+   *tar_i = ( (*rel_src_i) * (*src_r) - (*rel_src_r) * (*src_i) );
+   }
+
+}

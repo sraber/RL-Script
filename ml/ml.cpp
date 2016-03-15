@@ -1050,9 +1050,9 @@ cout << "Enter a command" << endl;
 goto START;
 
 while( cmd!="exit" ){
-   if( cmd.find("run") == 0 ){
+   if( cmd.find("run ") == 0 ){
       char buf[255];
-      string str = trim( cmd.substr(3) );
+      string str = trim( cmd.substr(4) );
       fstream f;
       f.open(str.c_str());
       if( f.is_open() ){
@@ -1095,14 +1095,6 @@ while( cmd!="exit" ){
          stRoot root(&cin, cmd);
          root.Produce(&GlobalContext);
          Evaulate(&GlobalContext);
-
-/*
-         fstream file( "bytecode.txt", ios::out );
-
-         file << endl << "Byte Code" << endl;
-
-         PrintByteCode(&GlobalContext,&file);
-*/
          }
       catch(SysError ser){
          cout << "Ummm.. that didn't work!" << endl
@@ -1853,44 +1845,6 @@ else{
    }
 
 context->Stack.push_front( rslt );
-}
-
-// Pull value off of stack.
-// Pull file name off of stack.
-void trig(rlContext* context, long p1, long p2)
-{
-Value lv;
-Value fv;
-Value ov;
-
-RunTimeAssert( context->Stack.size()>=3 , "Run time error. Not enough parameters on the stack for trig command." )
-
-lv = context->Stack.front();
-context->Stack.pop_front();
-
-fv = context->Stack.front();
-context->Stack.pop_front();
-
-ov = context->Stack.front();
-context->Stack.pop_front();
-
-Value nv;
-
-int n = *lv.numberValue;
-nv.type = TYPE_NUMBER;
-nv.numberValue = new float[n];
-nv.size = n;
-
-float f = 2.0f * R_PI * *fv.numberValue;
-float p = *ov.numberValue;
-
-switch(p1){
-   case 2: for( int i=0;i<n;i++){ (nv.numberValue)[i] = tan((f*(float)i/(float)(n-1))+p); } break;
-   case 1: for( int i=0;i<n;i++){ (nv.numberValue)[i] = sin((f*(float)i/(float)(n-1))+p); } break;
-   case 0: for( int i=0;i<n;i++){ (nv.numberValue)[i] = cos((f*(float)i/(float)(n-1))+p); } break;
-   default: ThrowRunTimeAssert( "byte code invalid, p1 not in valid range." )
-   }
-context->Stack.push_front( nv );
 }
 
 void line(rlContext* context, long p1, long p2)
