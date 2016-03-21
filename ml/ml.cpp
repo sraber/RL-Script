@@ -149,6 +149,10 @@ ThrowSyntaxAssert( "No closing square brace" )
 return 0; // will never hit this line.
 }
 
+// Looking for a comma but also want to skip over text inside of braces ().
+// Example text:  myfunction a,((somefunction a,b,c)/2),7
+// After the first comma we don't want to hit the comma's in a,b,c .
+//
 size_t FindParameterEnd(std::string rs, size_t p1 )
 {
 size_t pos = rs.find_first_of(",(",p1);
@@ -156,6 +160,7 @@ if(pos==string::npos){ return pos; }
 while(rs[pos]=='('){
    pos = FindClosingBrace( rs.substr(pos+1,string::npos) );
    pos = rs.find_first_of(",(",pos);
+   if( pos==string::npos){ break; }
    }
 return pos;
 }
@@ -917,6 +922,11 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stRemove(s.substr(pos+7));
       return;
       }
+   pos=s1.find("string ");
+   if( pos==0 ){
+      *ppST = new stUnaryOperator<0x09>(s.substr(pos+7));
+      return;
+      }
    pos=s1.find("complex ");
    if( pos==0 ){
       *ppST = new stTwoParm<0x04>(s.substr(pos+8));
@@ -1247,7 +1257,6 @@ context->Stack.pop_front();
 RunTimeAssert( rv.type==TYPE_NUMBER, "Run time error. \"complex\" command parameters must be a real ." )
 RunTimeAssert( iv.type==TYPE_NUMBER, "Run time error. \"complex\" command parameters must be a real ." )
 
-
 Value nv;
 int n = rv.size > iv.size ? iv.size : rv.size;
 MakeComplex(nv,n);
@@ -1255,6 +1264,32 @@ for(int i=0;i<n;i++){
    nv.complexValue[0][i] = rv.numberValue[i];
    nv.complexValue[1][i] = iv.numberValue[i];
    }
+
+context->Stack.push_front( nv );
+}
+
+void tostring(rlContext* context, long p1, long p2)
+{
+Value rv;
+Value iv;
+RunTimeAssert( context->Stack.size()>=1, "Run time error. Not enough parameters on the stack for \"string\" command." )
+
+rv = context->Stack.front();
+if( rv.type==TYPE_STRING ){
+	return;
+	}
+
+context->Stack.pop_front();
+
+RunTimeAssert( rv.type==TYPE_NUMBER, "Run time error. \"string\" command parameters must be a real ." )
+
+Value nv;
+nv.type = TYPE_STRING;
+std::strstream ss;
+ss << rv.numberValue[0] << std::ends;
+nv.stringValue = new std::string(ss.str());
+ss.freeze(false);
+nv.size = nv.stringValue->size();
 
 context->Stack.push_front( nv );
 }
@@ -2334,7 +2369,7 @@ for( iter=context->ByteCode.begin();
       case 0x06: imag(context,iter->p1,iter->p2); break;
       case 0x07: equals(context,iter->p1,iter->p2); break;
       case 0x08: discover(context,iter->p1,iter->p2); break;
-      case 0x09: break;//Reserved:String cast
+      case 0x09: tostring(context,iter->p1,iter->p2); break;
       case 0x0A: break;//Reserved:Number cast
       case 0x0B: show(context,iter->p1,iter->p2); break;
       case 0x0C: seg(context,iter->p1,iter->p2);break;
