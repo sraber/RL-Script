@@ -79,6 +79,7 @@ return str;
 inline bool FindString( std::string cmd, std::list<string>& lcomp, int* pret )
 {
 int i = 1;
+trim(cmd);
 *pret = 0;
 std::list<string>::iterator istr;
 for( istr =  lcomp.begin();
@@ -312,6 +313,7 @@ public:
             cout << prompt;
             }
          getline(*pis,cmd);
+		 if( pis->eof() ){ break; }
          }
       }
    stBlock(std::istream* pis,string prompt,std::list<string>& lcomp, int* pret, string& rcmd ){
@@ -332,6 +334,9 @@ public:
             cout << prompt;
             }
          getline(*pis,cmd);
+		 if( pis->eof() ){ 
+			break; 
+			}
          }
       rcmd = cmd;
       }
