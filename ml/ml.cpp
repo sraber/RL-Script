@@ -332,6 +332,9 @@ public:
             cout << prompt;
             }
          getline(*pis,cmd);
+		 if (pis->flags() & ios::eofbit) {
+			break;
+			}
          }
       rcmd = cmd;
       }
@@ -422,7 +425,7 @@ public:
       string rcmd;
       st_else_block = 0;
       std::list<std::string> elist;
-      elist.push_back( "end" );     // 1
+      elist.push_back( "endif" );     // 1
       elist.push_back( "elseif " );  // 2
       elist.push_back( "else" );   // 3
       Parse( &st_conditional, s);
@@ -836,6 +839,11 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stUnaryOperator<0x0E>(s.substr(pos+3));
       return;
       }
+   pos = s1.find("abs ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x40>(s.substr(pos + 4));
+	   return;
+   }
    pos=s1.find("cos ");
    if( pos==0 ){
       *ppST = new stUnaryOperator<0x20>(s.substr(pos+4));
@@ -851,11 +859,100 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stUnaryOperator<0x22>(s.substr(pos+4));
       return;
       }
+
+   pos = s1.find("acos ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x41>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("asin ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x43>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("atan ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x45>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("atan2 ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x47>(s.substr(pos + 6));
+	   return;
+   }
+
+   pos = s1.find("acosh ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x42>(s.substr(pos + 6));
+	   return;
+   }
+   pos = s1.find("asinh ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x44>(s.substr(pos + 6));
+	   return;
+   }
+   pos = s1.find("atanh ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x46>(s.substr(pos + 6));
+	   return;
+   }
+   pos = s1.find("cosh ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x49>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("sinh ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x4D>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("tanh ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x4E>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("ceil ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x48>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("floor ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x4B>(s.substr(pos + 6));
+	   return;
+   }
+   pos = s1.find("log2 ");
+   if (pos == 0) {
+	   *ppST = new stUnaryOperator<0x4C>(s.substr(pos + 5));
+	   return;
+   }
+   pos = s1.find("pow ");
+   if (pos == 0) {
+	   *ppST = new stTwoParm<0x53>(s.substr(pos + 4));
+	   return;
+   }
    pos=s1.find("seg ");
    if( pos==0 ){
       *ppST = new stThreeParmWithOptions<0x0C>(s.substr(pos+4));
       return;
       }
+
+   pos = s1.find("max ");
+   if (pos == 0) {
+	   *ppST = new stTwoParm<0x50>(s.substr(pos + 4));
+	   return;
+   }
+   pos = s1.find("min ");
+   if (pos == 0) {
+	   *ppST = new stTwoParm<0x51>(s.substr(pos + 4));
+	   return;
+   }
+   pos = s1.find("mod ");
+   if (pos == 0) {
+	   *ppST = new stTwoParm<0x52>(s.substr(pos + 4));
+	   return;
+   }
+
    pos=s1.find("init ");
    if( pos==0 ){
       *ppST = new stThreeParmWithOptions<0x23>(s.substr(pos+5));
@@ -1790,6 +1887,8 @@ context->Stack.push_front( nv );
 }
 
 //------------------------------------------------------------------------
+//                 MATH FUNCTORs
+//
 template<class Ty>
 struct foLn : public unary_function<Ty, Ty>{	// functor for unary operator-
 	Ty operator()(const Ty& Left) const{	// apply operator- to operand
@@ -1805,10 +1904,25 @@ struct foLog : public unary_function<Ty, Ty>{	// functor for unary operator-
 };
 
 template<class Ty>
+struct folog2 : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return log2(Left);
+	}
+};
+
+
+template<class Ty>
 struct foExp : public unary_function<Ty, Ty>{	// functor for unary operator-
 	Ty operator()(const Ty& Left) const{	// apply operator- to operand
 		return exp(Left);
 		}
+};
+
+template<class Ty>
+struct foexp2 : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return exp2(Left);
+	}
 };
 
 template<class Ty>
@@ -1839,10 +1953,189 @@ struct foCos : public unary_function<Ty, Ty>{	// functor for unary operator-
 		}
 };
 
-template< class T, class U >
-void trans_op(rlContext* context, RLBYTES::iterator& iter)
+// code / function
+// 0x40 abs(_In_ float _Xx)
+// 0x41 acos(_In_ float _Xx)
+// 0x42 acosh(_In_ float _Xx)
+// 0x43 asin(_In_ float _Xx)
+// 0x44 asinh(_In_ float _Xx)
+// 0x45 atan(_In_ float _Xx)
+// 0x46 atanh(_In_ float _Xx)
+// 0x47 atan2(_In_ float _Xx)
+// 0x48 ceil(_In_ float _Xx)
+// 0x49 cosh(_In_ float _Xx)
+// 0x4A exp2(_In_ float _Xx)
+// 0x4B floor(_In_ float _Xx)
+// 0x4C log2(_In_ float _Xx)
+// 0x4D sinh(_In_ float _Xx)
+// 0x4E tanh(_In_ float _Xx)
+
+// 0x50 fmax(_In_ float _Xx, _In_ float _Yx)
+// 0x51 fmin(_In_ float _Xx, _In_ float _Yx)
+// 0x52 fmod(_In_ float _Xx, _In_ float _Yx)
+
+// 0x53 powf(_In_ float _Xx, _In_ float _Yx)
+
+
+template<class Ty>
+struct foabs : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return abs(Left);
+	}
+};
+
+template<class Ty>
+struct foacos : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return acos(Left);
+	}
+};
+
+template<class Ty>
+struct foacosh : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return acosh(Left);
+	}
+};
+
+template<class Ty>
+struct foasin : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return asin(Left);
+	}
+};
+
+template<class Ty>
+struct foasinh : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return asin(Left);
+	}
+};
+
+template<class Ty>
+struct foatan : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return atan(Left);
+	}
+};
+
+template<class Ty>
+struct foatanh : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return atanh(Left);
+	}
+};
+
+template<class Ty>
+struct foceil : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return ceil(Left);
+	}
+};
+
+template<class Ty>
+struct focosh : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return cosh(Left);
+	}
+};
+
+template<class Ty>
+struct fofloor : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return floor(Left);
+	}
+};
+
+template<class Ty>
+struct fosinh : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return sinh(Left);
+	}
+};
+
+template<class Ty>
+struct fotanh : public unary_function<Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& Left) const {	// apply operator to operand
+		return tanh(Left);
+	}
+};
+
+//-----------------------
+//        Binary Functor
+//
+template<class Ty>
+struct fofmax : public binary_function<Ty, Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& P1, const Ty& P2) const {	// apply operator to operand
+		return fmax(P1,P2);
+	}
+};
+
+template<class Ty>
+struct fofmin : public binary_function<Ty, Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& P1, const Ty& P2) const {	// apply operator to operand
+		return fmin(P1, P2);
+	}
+};
+
+template<class Ty>
+struct fofmod : public binary_function<Ty, Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& P1, const Ty& P2) const {	// apply operator to operand
+		return fmod(P1, P2);
+	}
+};
+
+template<class Ty>
+struct foatan2 : public binary_function<Ty, Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& P1, const Ty& P2) const {	// apply operator to operand
+		return atan2(P1, P2);
+	}
+};
+
+template<class Ty>
+struct fopowf : public binary_function<Ty, Ty, Ty> {	// functor for unary operator
+	Ty operator()(const Ty& P1, const Ty& P2) const {	// apply operator to operand
+		return powf(P1, P2);
+	}
+};
+
+//
+//----------------------------------------------------------------------------------------
+
+template< class T >
+void unary_real_op(rlContext* context, RLBYTES::iterator& iter)
 {
-long p1 = iter->p1;
+	Value s1;
+	T op;
+
+	RunTimeAssert(context->Stack.size() >= 1, "Run time error. Not enough parameters on the stack for command.")
+	s1 = context->Stack.front();
+	context->Stack.pop_front();
+
+	Value rslt;
+	if (s1.type == TYPE_NUMBER) {
+		rslt.type = TYPE_NUMBER;
+		unsigned long n = s1.size;
+		rslt.numberValue = new float[n];
+		rslt.size = n;
+		float* is1 = s1.numberValue;
+		float* it = rslt.numberValue;
+		float* iend = is1 + n;
+		for (; is1<iend; is1++, it++) { *it = op(*is1); }
+	}
+	else if (s1.type == TYPE_COMPLEX) {
+		ThrowRunTimeAssertEx("The operator " << typeid(T).name() << " doesn't work on complex numbers.")
+	}
+	else {
+		ThrowRunTimeAssertEx("Yur asking me to " << typeid(T).name() << " things that can't be done!")
+	}
+
+	context->Stack.push_front(rslt);
+}
+
+template< class T, class U >
+void unary_op(rlContext* context, RLBYTES::iterator& iter)
+{
 Value s1;
 T op;
 U cop;
@@ -1880,6 +2173,86 @@ else{
    }
 
 context->Stack.push_front( rslt );
+}
+
+template< class T >
+void binary_real_op(rlContext* context, RLBYTES::iterator& iter)
+{
+	Value s1;
+	Value s2;
+	T op;
+
+	RunTimeAssert(context->Stack.size() >= 2, "Run time error. Not enough parameters on the stack for command.")
+	s1 = context->Stack.front();
+	context->Stack.pop_front();
+	s2 = context->Stack.front();
+	context->Stack.pop_front();
+
+	Value rslt;
+	if (s1.type == TYPE_NUMBER) {
+		rslt.type = TYPE_NUMBER;
+		unsigned long n = s1.size;
+		rslt.numberValue = new float[n];
+		rslt.size = n;
+		float* is1 = s1.numberValue;
+		float* it = rslt.numberValue;
+		float* iend = is1 + n;
+		float* is2 = s2.numberValue;
+		for (; is1<iend; is1++, it++) { *it = op(*is1, *is2); }
+	}
+	else if (s1.type == TYPE_COMPLEX) {
+		ThrowRunTimeAssertEx("Yur asking me to " << typeid(T).name() << " things that can't be done!")
+	}
+	else {
+		ThrowRunTimeAssertEx("Yur asking me to " << typeid(T).name() << " things that can't be done!")
+	}
+
+	context->Stack.push_front(rslt);
+}
+
+template< class T, class U >
+void binary_op(rlContext* context, RLBYTES::iterator& iter)
+{
+	Value s1;
+	Value s2;
+	T op;
+	U cop;
+
+	RunTimeAssert(context->Stack.size() >= 2, "Run time error. Not enough parameters on the stack for command.")
+	s1 = context->Stack.front();
+	context->Stack.pop_front();
+	s2 = context->Stack.front();
+	context->Stack.pop_front();
+
+	Value rslt;
+	if (s1.type == TYPE_NUMBER) {
+		rslt.type = TYPE_NUMBER;
+		unsigned long n = s1.size;
+		rslt.numberValue = new float[n];
+		rslt.size = n;
+		float* is1 = s1.numberValue;
+		float* it = rslt.numberValue;
+		float* iend = is1 + n;
+		float* is2 = s2.numberValue;
+		for (; is1<iend; is1++, it++) { *it = op(*is1,*is2); }
+	}
+	else if (s1.type == TYPE_COMPLEX) {
+		rslt.type = TYPE_COMPLEX;
+		unsigned long n = s1.size;
+		MakeComplex(rslt, n);
+		for (int i = 0; i<n; i++) {
+			complex<float> crslt = cop(	complex<float>(s1.complexValue[0][i], s1.complexValue[1][i]),
+										complex<float>(s2.complexValue[0][i], s2.complexValue[1][i])
+										);
+			rslt.complexValue[0][i] = crslt.real();
+			rslt.complexValue[1][i] = crslt.imag();
+		}
+	}
+	else {
+		ThrowRunTimeAssertEx("Yur asking me to " << typeid(T).name() << " things that can't be done!")
+	}
+
+	context->Stack.push_front(rslt);
 }
 
 void line(rlContext* context, long p1, long p2)
@@ -2392,16 +2765,16 @@ for( iter=context->ByteCode.begin();
       case 0x1E: remove(context,iter->p1,iter->p2); break;
 
       //case 0x20: trig(context,iter->p1,iter->p2); break;
-      case 0x20: trans_op< foCos<float>, foSin< complex<float>>>(context,iter); break;
-      case 0x21: trans_op< foSin<float>, foSin< complex<float>>>(context,iter); break;
-      case 0x22: trans_op< foTan<float>, foSin< complex<float>>>(context,iter); break;
+      case 0x20: unary_op< foCos<float>, foSin< complex<float>>>(context,iter); break;
+      case 0x21: unary_op< foSin<float>, foSin< complex<float>>>(context,iter); break;
+      case 0x22: unary_op< foTan<float>, foSin< complex<float>>>(context,iter); break;
       case 0x23: line(context,iter->p1,iter->p2); break;
       case 0x24: noise(context,iter->p1,iter->p2); break;
 
-      case 0x26: trans_op< foSqrt<float>, foSqrt< complex<float>>>(context,iter); break;
-      case 0x27: trans_op< foLn<float>, foLn< complex<float>>>(context,iter); break;
-      case 0x28: trans_op< foLog<float>, foLog< complex<float>>>(context,iter); break;
-      case 0x29: trans_op< foExp<float>, foExp< complex<float>>>(context,iter); break;
+      case 0x26: unary_op< foSqrt<float>, foSqrt< complex<float>>>(context,iter); break;
+      case 0x27: unary_op< foLn<float>, foLn< complex<float>>>(context,iter); break;
+      case 0x28: unary_op< foLog<float>, foLog< complex<float>>>(context,iter); break;
+      case 0x29: unary_op< foExp<float>, foExp< complex<float>>>(context,iter); break;
 
       case 0x30: call(context,iter); break;
       case 0x31: jump(context,iter); break;
@@ -2415,7 +2788,28 @@ for( iter=context->ByteCode.begin();
       case 0x38: logic_op< equal_to<float> >(context,iter); break;
       case 0x39: unary_logic_op< logical_not<float> >(context,iter); break;
 
-      default: ml_evaulate( context, *iter );
+	  case 0x40: unary_real_op< foabs<float>>(context, iter); break;
+	  case 0x41: unary_op< foacos<float>, foacos< complex<float>>>(context, iter); break;
+	  case 0x42: unary_op< foacosh<float>, foacosh< complex<float>>>(context, iter); break;
+	  case 0x43: unary_real_op< foasin<float>>(context, iter); break;
+	  case 0x44: unary_op< foasinh<float>, foasinh< complex<float>>>(context, iter); break;
+	  case 0x45: unary_real_op< foatan<float>>(context, iter); break;
+	  case 0x46: unary_op< foatanh<float>, foatanh< complex<float>>>(context, iter); break;
+	  case 0x47: binary_real_op< foatan2<float>>(context, iter); break;
+	  case 0x48: unary_real_op< foceil<float>>(context, iter); break;
+	  case 0x49: unary_op< focosh<float>, focosh< complex<float>>>(context, iter); break;
+	  case 0x4A: unary_real_op< foexp2<float>>(context, iter); break;
+	  case 0x4B: unary_real_op< fofloor<float>>(context, iter); break;
+	  case 0x4C: unary_real_op< folog2<float>>(context, iter); break;
+	  case 0x4D: unary_op< fosinh<float>, fosinh< complex<float>>>(context, iter); break;
+	  case 0x4E: unary_op< fotanh<float>, fotanh< complex<float>>>(context, iter); break;
+
+	  case 0x50: binary_real_op< fofmax<float>>(context, iter); break;
+	  case 0x51: binary_real_op< fofmin<float>>(context, iter); break;
+	  case 0x52: binary_real_op< fofmod<float>>(context, iter); break;
+	  case 0x53: binary_real_op< fopowf<float>>(context, iter); break;
+
+	  default: ml_evaulate( context, *iter );
      };
    }
 }
