@@ -129,6 +129,41 @@ ThrowSyntaxAssert( "No closing brace" )
 return 0; // will never hit this line.
 }
 
+size_t FindClosingBrace1(size_t pos, string &str)
+{
+int open = 0;
+for (unsigned int i = pos; i<str.length(); i++) {
+	if (str[i] == '(') {
+		open++;
+		}
+	else if (str[i] == ')') {
+		if (!open) {
+			return (size_t)i;
+			}
+		else {
+			open--;
+			}
+		}
+	}
+ThrowSyntaxAssert("No closing brace")
+return 0; // will never hit this line.
+}
+
+size_t FindNextOneOfThese(char c, size_t pos, string &str)
+{
+	int open = 0;
+	for (unsigned int i = pos; i<str.length(); i++) {
+		if (str[i] == c) {
+			return (size_t)i;
+			}
+		else if (str[i] == '(') {
+			i = FindClosingBrace1(i+1,str);
+			if (i == string::npos) { return i; }
+			}
+		}
+return string::npos;
+}
+
 // Could have used a template.
 size_t FindClosingSquareBrace( string &str )
 {
@@ -793,10 +828,99 @@ public:
 //
 void Parse(SyntaxTree**ppST,string s)
 {
+size_t pos;
 trim(s);
+if (s[0] == '(' && FindClosingBrace1(1,s) == (s.length() - 1)) {
+	Parse(ppST, s.substr(1, s.length() - 2));
+	return;
+	}
+
+// Operator presedence is determined here and in this code must be in reverse order.
+// So operator presedence is *,/,+, -
+pos = FindNextOneOfThese('-', 0, s);
+if (pos != string::npos) {
+	if (pos > 0) {
+		*ppST = new stBinaryOperator<0x12>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	}
+	else {
+		*ppST = new stUnaryOperator<0x1C>(s.substr(pos + 1, string::npos));
+	}
+	return;
+}
+pos = FindNextOneOfThese('+', 0, s);
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x11>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+}
+pos = FindNextOneOfThese('/', 0, s);
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x14>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+}
+pos = FindNextOneOfThese('*',0,s);
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x13>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+
+pos = s.find(">");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x33>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+pos = s.find("<");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x34>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+pos = s.find(">=");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x35>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+pos = s.find("<=");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x36>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+pos = s.find("!=");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x37>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+pos = s.find("==");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x38>(s.substr(0, pos), s.substr(pos + 1, string::npos));
+	return;
+	}
+pos = s.find("!");
+if (pos != string::npos) {
+	*ppST = new stUnaryOperator<0x39>(s.substr(pos+1, string::npos));
+	return;
+	}
+
+pos = s.find(" and ");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x60>(s.substr(0, pos), s.substr(pos + 5, string::npos));
+	return;
+	}
+pos = s.find(" AND ");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x60>(s.substr(0, pos), s.substr(pos + 5, string::npos));
+	return;
+	}
+pos = s.find(" or ");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x61>(s.substr(0, pos), s.substr(pos + 4, string::npos));
+	return;
+}
+pos = s.find(" OR ");
+if (pos != string::npos) {
+	*ppST = new stBinaryOperator<0x61>(s.substr(0, pos), s.substr(pos + 4, string::npos));
+	return;
+}
 
 for(int n=1; n<=s.size(); n++ ){
-   size_t pos;
    string s1 = s.substr(0,n);
 
    pos=s1.find("cd ");
@@ -1060,71 +1184,7 @@ for(int n=1; n<=s.size(); n++ ){
       *ppST = new stCall(s.substr(s1.size()), fit->second);
       return;
       }
-
-   if(      s[n-1]=='+' ){
-      *ppST = new stBinaryOperator<0x11>(s.substr(0,n-1), s.substr(n,string::npos) );
-      return;
-      }
-   else if( s[n-1]=='-' ){
-      if( n > 1 ){
-         *ppST = new stBinaryOperator<0x12>(s.substr(0,n-1), s.substr(n,string::npos) );
-         }
-      else{
-         *ppST = new stUnaryOperator<0x1C>(s.substr(n,string::npos) );
-         }
-      return;
-      }
-   else if( s[n-1]=='*' ){
-      *ppST = new stBinaryOperator<0x13>(s.substr(0,n-1), s.substr(n,string::npos) );
-      return;
-      }
-   else if( s[n-1]=='/' ){
-      *ppST = new stBinaryOperator<0x14>(s.substr(0,n-1), s.substr(n,string::npos) );
-      return;
-      }
-   else if( s[n-1]=='>' ){
-      if( n>1 && s[n]=='=' ){
-         *ppST = new stBinaryOperator<0x35>(s.substr(0,n-1), s.substr(n+1,string::npos) );
-         }
-      else{
-         *ppST = new stBinaryOperator<0x33>(s.substr(0,n-1), s.substr(n,string::npos) );
-         }
-      return;
-      }
-   else if( s[n-1]=='<' ){
-      if( n>1 && s[n]=='=' ){
-         *ppST = new stBinaryOperator<0x36>(s.substr(0,n-1), s.substr(n+1,string::npos) );
-         }
-      else{
-         *ppST = new stBinaryOperator<0x34>(s.substr(0,n-1), s.substr(n,string::npos) );
-         }
-      return;
-      }
-   else if( s[n-1]=='=' && n>1 && s[n]=='=' ){
-      *ppST = new stBinaryOperator<0x38>(s.substr(0,n-1), s.substr(n+1,string::npos) );
-      return;
-      }
-   else if( s[n-1]=='!' ){
-      if( n>1 && s[n]=='=' ){
-         *ppST = new stBinaryOperator<0x37>(s.substr(0,n-1), s.substr(n+1,string::npos) );
-         }
-      else{
-         *ppST = new stUnaryOperator<0x39>(s.substr(n,string::npos) );
-         }
-      return;
-      }
-   else if( s[n-1]=='(' ){
-      int pos = FindClosingBrace( s.substr(n,string::npos) );
-      SyntaxAssert( pos, "empty braces." )
-      // Adding 2 accounts for the open and close brace.
-      if( (pos+2)==s.length() ){
-         Parse( ppST, s.substr(n,s.length()-2) );
-         return;
-         }
-      else{
-         n=pos+2;
-         }
-      }
+   
    else if( s[n-1]=='[' ){
       int pos = FindClosingSquareBrace( s.substr(n,string::npos) );
       SyntaxAssert( pos, "empty braces." )
@@ -1955,29 +2015,31 @@ struct foCos : public unary_function<Ty, Ty>{	// functor for unary operator-
 		}
 };
 
-// code / function
-// 0x40 abs(_In_ float _Xx)
-// 0x41 acos(_In_ float _Xx)
-// 0x42 acosh(_In_ float _Xx)
-// 0x43 asin(_In_ float _Xx)
-// 0x44 asinh(_In_ float _Xx)
-// 0x45 atan(_In_ float _Xx)
-// 0x46 atanh(_In_ float _Xx)
-// 0x47 atan2(_In_ float _Xx)
-// 0x48 ceil(_In_ float _Xx)
-// 0x49 cosh(_In_ float _Xx)
-// 0x4A exp2(_In_ float _Xx)
-// 0x4B floor(_In_ float _Xx)
-// 0x4C log2(_In_ float _Xx)
-// 0x4D sinh(_In_ float _Xx)
-// 0x4E tanh(_In_ float _Xx)
+template<class _Ty = void>
+struct _and_
+{	// functor for operator==
+	typedef _Ty first_argument_type;
+	typedef _Ty second_argument_type;
+	typedef bool result_type;
 
-// 0x50 fmax(_In_ float _Xx, _In_ float _Yx)
-// 0x51 fmin(_In_ float _Xx, _In_ float _Yx)
-// 0x52 fmod(_In_ float _Xx, _In_ float _Yx)
+	_CONST_FUN bool operator()(const _Ty& _Left, const _Ty& _Right) const
+	{	// apply operator== to operands
+		return (_Left && _Right);
+	}
+};
 
-// 0x53 powf(_In_ float _Xx, _In_ float _Yx)
+template<class _Ty = void>
+struct _or_
+{	// functor for operator==
+	typedef _Ty first_argument_type;
+	typedef _Ty second_argument_type;
+	typedef bool result_type;
 
+	_CONST_FUN bool operator()(const _Ty& _Left, const _Ty& _Right) const
+	{	// apply operator== to operands
+		return (_Left || _Right);
+	}
+};
 
 template<class Ty>
 struct foabs : public unary_function<Ty, Ty> {	// functor for unary operator
@@ -2810,6 +2872,10 @@ for( iter=context->ByteCode.begin();
 	  case 0x51: binary_real_op< fofmin<float>>(context, iter); break;
 	  case 0x52: binary_real_op< fofmod<float>>(context, iter); break;
 	  case 0x53: binary_real_op< fopowf<float>>(context, iter); break;
+
+	  case 0x60: logic_op< _and_<float> >(context, iter); break;
+	  case 0x61: logic_op< _or_<float> >(context, iter); break;
+
 
 	  default: ml_evaulate( context, *iter );
      };
